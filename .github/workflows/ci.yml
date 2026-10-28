@@ -72,23 +72,4 @@ jobs:
                 console.log('loaded:', m.name, '| inject:', JSON.stringify(m.inject));
               })
               .catch((e) => { console.error('::error::' + e.message); process.exit(1); });
-          ").test(x));
-              if (!hits.length) fail('files glob matched nothing: ' + f);
-            }
-            console.log('manifest ok');
-          "
-
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: Entry point loads
-        shell: bash
-        run: |
-          node --input-type=module -e "
-            import('./index.js')
-              .then((m) => {
-                if (typeof m.apply !== 'function') { console.error('::error::apply is not a function'); process.exit(1); }
-                console.log('loaded:', m.name, '| inject:', JSON.stringify(m.inject));
-              })
-              .catch((e) => { console.error('::error::' + e.message); process.exit(1); });
           "
