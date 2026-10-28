@@ -44,9 +44,36 @@ jobs:
             if (j.exports['.']) if (!fs.existsSync(j.exports['.'])) fail('exports . missing');
             if (j.exports['./client']) if (!fs.existsSync(j.exports['./client'])) fail('exports client missing');
             for (const f of j.files) {
-              const probe = f.replace('/*', '');
-              if (probe.includes('*')) continue;
-              if (!fs.existsSync(probe)) fail('files entry missing: ' + f);
+              if (!f.includes('*')) {
+                if (!fs.existsSync(f)) fail('files entry missing: ' + f);
+                continue;
+              }
+              // Globs must expand to at least one real file. The old code stripped
+              // the pattern, turning locale/*.json into locale.json and failing.
+              const dir = f.slice(0, f.indexOf('*')).replace(/\/$/, '') || '.';
+              const pat = f.slice(f.indexOf('*')).replace(/\./g, '\\\.').replace(/\*/g, '.*');
+              if (!fs.existsSync(dir)) fail('files glob dir missing: ' + dir);
+              const hits = fs.readdirSync(dir).filter((x) => new RegExp('^' + pat + '$').test(x));
+              if (!hits.length) fail('files glob matched nothing: ' + f);
+            }
+            console.log('manifest ok');
+          "
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Entry point loads
+        shell: bash
+        run: |
+          node --input-type=module -e "
+            import('./index.js')
+              .then((m) => {
+                if (typeof m.apply !== 'function') { console.error('::error::apply is not a function'); process.exit(1); }
+                console.log('loaded:', m.name, '| inject:', JSON.stringify(m.inject));
+              })
+              .catch((e) => { console.error('::error::' + e.message); process.exit(1); });
+          ").test(x));
+              if (!hits.length) fail('files glob matched nothing: ' + f);
             }
             console.log('manifest ok');
           "

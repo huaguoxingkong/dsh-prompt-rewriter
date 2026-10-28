@@ -1,181 +1,181 @@
 # dsh-prompt-rewriter
 
+English | [中文](README.zh.md)
+
 [![npm](https://img.shields.io/npm/v/dsh-prompt-rewriter.svg)](https://www.npmjs.com/package/dsh-prompt-rewriter)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-一键把聊天输入框里的草稿改写成更清晰、更完整的提示词。**原位替换，不发送消息、不运行 Agent。**
+Turns the half-formed draft in your composer into a task instruction you can actually run.
+**It rewrites the box, it never sends.** Don't like it? `Ctrl+Z` and you're back.
 
-一个非官方社区项目，与 DeepSeek 无隶属或授权关系。素材归属见 [NOTICE.md](NOTICE.md)。
+> An unofficial community project, not affiliated with or endorsed by DeepSeek. Artwork attribution is in [NOTICE.md](NOTICE.md).
 
 ---
 
-## 它解决什么问题
+![One click in the composer turns a draft into a complete prompt](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/01-hero-en.gif)
 
-一句话的草稿往往缺目标、缺约束、缺输出格式，模型只能猜。这个插件把草稿改写成可执行的提示词，再放回输入框——你可以先看一眼、改两笔，再决定发不发。
+## What it fills in for you
 
-**按钮长在输入框里，不用另开页面。** 位置在输入框右下角、模型名左侧（图中蓝框那一个），输入框有内容时出现，为空时自动隐藏。
+A one-line draft is missing **goal, format, and boundaries**. The model can only guess — guess wrong and you spend another round rewording. This button puts those three things back into the sentence you already wrote:
 
-![按钮就在输入框里，紧挨模型名](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/01-composer-button.png)
+| | What you typed | What goes back in the box |
+|---|---|---|
+| You wrote | *help me write a scraper for Douban movies* | the same sentence |
+| Goal added | | scrape **Top 250** titles, **ratings and links** |
+| Format added | | output a **CSV file** |
+| Boundaries added | | respect robots.txt, **wait at least 2s between requests**, back off on rate limits **instead of circumventing them** |
 
-## 功能
+The third column is not something you wrote. It read your sentence and filled it in. **And it stays editable** — it lands in the composer, not somewhere else.
 
-- **一键改写**：输入框有内容时出现按钮，无内容时隐藏。
-- **原位替换**：结果直接写回输入框，是一个可撤销的编辑步，`Ctrl+Z` 可回退。
-- **随时可停**：改写中再点一下即取消，草稿保持原样，不报错。
-- **失败可见**：出错时按钮变成重试图标，原因直接显示在按钮旁。
-- **上下文感知**：会话已有对话时参考前文的目标、已确认要求与已排除方案；空会话只处理当前草稿。
-- **参考输入框图片**：可选让输入框里的图片一起参与改写；历史消息里的图片**始终不读**。
+## How to use it
 
-### 改写前后
+1. Type any draft in the composer — shorter is fine.
+2. Click the **whale-tail icon just left of the model name**. It isn't there when the box is empty.
+3. A second later the draft is replaced with the rewritten prompt.
+4. Not what you wanted? `Ctrl+Z`, or click the undo arrow the button turned into.
 
-![改写前后对比](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/02-before-after.png)
+Changed your mind mid-flight? Click again to cancel. The draft stays exactly as it was — no half-finished text left behind.
 
-### 两种模式
+### The four button states
 
-空会话只处理当前草稿，图标无标记；会话已有对话时参考前文，图标右下角出现小圆点。
+![Button states: idle, rewriting, done and undoable, failed and retryable](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/05-button-states-en.gif)
 
-![两种模式的区别](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/04-context-modes.png)
+| State | What you see | What it means |
+|---|---|---|
+| Idle | static whale tail | ready to click |
+| Rewriting | the tail spins into a spiral | running; click again to cancel |
+| Done | turns into an undo arrow | one click back, or `Ctrl+Z` |
+| Failed | red retry icon + reason | the reason sits right next to it — no log hunting |
 
-### 按钮状态
+## Two things worth not confusing
 
-![按钮状态](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/05-button-states.png)
+### 1. Whether it reads the conversation
 
-## 安装
+![Empty session vs. existing conversation: the small dot in the corner is the marker](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/04-context-modes-en.png)
 
-需要 DeepSeek Harness 桌面版，`node >= 22`。
+The **small dot in the button's lower-right corner** is the whole difference:
 
-### 从 npm 安装（推荐）
+- **Empty session** (no dot): sees only your current draft.
+- **Existing conversation** (dot): also reads earlier turns, so it knows what you already confirmed and already ruled out. The rewrite lands closer to what you actually want this time.
+
+Conversation context costs tokens. If long chats feel slow or expensive, turn off *Reference the conversation* in settings and the dot disappears.
+
+### 2. Whether it reads images
+
+Only images **currently sitting in the composer** — **never images from earlier messages**. That line is deliberate: old pasted screenshots are slow to process and easy to misread, so they're out of scope.
+
+## Settings
+
+`Settings → Prompt rewriter`. Three switches and one dropdown, affecting **only this button, never normal sending**.
+
+![Settings page](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/03-settings-en.png)
+
+| Option | Default | What turning it on does |
+|---|---|---|
+| Use a fixed model | Off | Off: follow the model of the current conversation. On: always use the model picked below. |
+| Reference the conversation | **On** | Read earlier turns. More accurate, but extra tokens and slower on long chats. |
+| Reference composer images | Off | Images in the composer take part. Earlier messages' images are never read. |
+
+- The model dropdown lists **the providers and models you actually have** — you can't type in one that doesn't exist.
+- Turning the model switch off does not clear your selection; flipping it back on shows the same choice.
+- Images still uploading are skipped, and the status area tells you how many were missed. A rewrite never fails because of an image.
+
+## Install
+
+DeepSeek Harness desktop, `node >= 22`. **Restart Harness after installing** — this plugin has no HMR.
+
+### From npm (recommended)
 
 ```sh
 dsh plugin --profile desktop add dsh-prompt-rewriter
 ```
 
-### 从 GitHub 源码安装
+### From GitHub source
 
 ```sh
 dsh plugin --profile desktop add github:huaguoxingkong/dsh-prompt-rewriter
 ```
 
-源码安装会拉取未构建的仓库，首次安装可能提示允许运行该包的安装脚本——只对你信任的包授予此权限。
+Installing from source runs a build step and may ask you to approve it. Grant that only to packages you trust.
 
-### 从 Release 安装
+### From a release zip
 
-到 [Releases](https://github.com/huaguoxingkong/dsh-prompt-rewriter/releases) 下载 `dsh-prompt-rewriter-1.0.0.zip`，解压后：
+Download the zip from [Releases](https://github.com/huaguoxingkong/dsh-prompt-rewriter/releases), unzip, then `npm install && dsh plugin --profile desktop add .`.
 
-```sh
-cd dsh-prompt-rewriter-1.0.0
-npm install
-dsh plugin --profile desktop add .
-```
+## FAQ
 
-### 本地 checkout 安装
+**Clicked it and nothing happened.** The composer is empty, or *Use a fixed model* is on with no model picked.
 
-```sh
-git clone https://github.com/huaguoxingkong/dsh-prompt-rewriter.git
-cd dsh-prompt-rewriter
-npm install
-dsh plugin --profile desktop add .
-```
+**"No credentials configured for the current model."** That model has no key set. Switch models, or pin one that works in settings.
 
-`npm install` 是必需的：插件用 `@deepseek-ai/schemastery` 声明设置页的 `Config`，它是唯一外部依赖。
+**Can I undo the whole rewrite?** One `Ctrl+Z`. It's an ordinary edit step in the composer.
 
-### 安装后
+**Does it change messages I already sent?** No. It only edits the draft, and it never sends.
 
-**重启 DeepSeek Harness。** 本插件没有 HMR，bundle 在启动时读取快照，不重启不会生效。
+## Configuration
 
-## 使用
-
-1. 在输入框里写下任意草稿。
-2. 点模型名左侧的增强按钮（大肥鱼图标）。
-3. 等待改写完成，草稿被替换成新提示词。
-4. 不满意可按 `Ctrl+Z` 或点回退图标还原。
-
-改写用的是**当前会话选中的模型**，除非你在设置里固定了别的模型。
-
-## 设置
-
-`设置 → 提示词增强` 提供三个开关与一个模型选择器，只影响这个按钮，不影响正常发送。
-
-![设置页](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/03-settings.png)
-
-| 选项 | 默认 | 说明 |
-|---|---|---|
-| **用哪个模型改写** | 关 | 关：跟随当前对话正在用的模型。开：始终使用下拉中选定的模型。 |
-| **参考之前的对话** | 开 | 改写时参考本会话前文，更贴合真实意图。会多耗 token，长对话也更慢。 |
-| **参考输入框里的图片** | 关 | 输入框里已放好的图片一并参与改写。**历史消息里的图片始终不读。** |
-
-行为细节：
-
-- **模型选择会持久化**：选择器列出你实际拥有的渠道与模型（与输入框的模型选择器同一份数据），无法手填不存在的模型。关闭开关不会清空已选模型，重新打开直接回显上次选择。
-- **图片仅在完成上传后可读**：上传中的图片会被跳过，并在状态区提示“有 N 张图片未能读取”，不会让改写失败。
-- 三个开关各自独立生效，互不影响。
-
-## 配置
-
-profile 插件行的 `config` 字段全部可选。前五项由设置页托管，后七项为运维上限：
+Every `config` key on the profile plugin line is optional. The first five are managed by the settings page; the last seven are operational ceilings and are not exposed in the UI.
 
 ```yaml
 - id: dsh-prompt-rewriter
   name: dsh-prompt-rewriter
   config:
-    # 设置页托管
-    useCustomModel: false      # 是否固定使用 enhanceProvider/enhanceModel
-    enhanceProvider: ""        # 空 = 跟随会话模型
+    # managed by the settings page
+    useCustomModel: false      # pin enhanceProvider/enhanceModel
+    enhanceProvider: ""        # empty = follow the session model
     enhanceModel: ""
-    referenceImages: false     # 是否参考输入框图片
-    referenceContext: true     # 是否参考前文
+    referenceImages: false     # read composer images
+    referenceContext: true     # read earlier turns
 
-    # 运维上限（不暴露在设置页）
-    maxDraftChars: 8000        # 草稿字符上限
-    maxOutputChars: 12000      # 输出字符上限
-    maxOutputTokens: 2000      # 单次请求输出 token 上限
-    timeoutMs: 90000           # 端到端超时
-    historyTokenBudget: 6000   # 历史注入的 token 预算
-    historyMaxMessages: 24     # 历史最多取多少条
-    historyMessageChars: 4000  # 单条历史字符上限
+    # operational ceilings (not exposed in the UI)
+    maxDraftChars: 8000        # draft length cap
+    maxOutputChars: 12000      # output length cap
+    maxOutputTokens: 2000      # output tokens per request
+    timeoutMs: 90000           # end-to-end timeout
+    historyTokenBudget: 6000   # token budget for injected history
+    historyMaxMessages: 24     # max history messages
+    historyMessageChars: 4000  # per-message character cap
 ```
 
-## 工作原理
+## How it works
 
-| 半边 | 文件 | 职责 |
+| Half | File | Responsibility |
 |---|---|---|
-| Host | `index.js` | 注册 `POST /api/prompt-enhance`（改写）与 `GET/POST /api/prompt-enhance/settings`（设置），走 `ctx.connection.fetch`，继承 Harness 鉴权与来源校验。读取会话投影得到当前模型，经 `ctx.llm` 生成结果。 |
-| Client | `client.js` | 在 `conversation.input.right` 渲染按钮；在 `settings.section` 渲染设置页。通过 `inputActions.insertText` 原位替换草稿。 |
+| Host | `index.js` | Registers `POST /api/prompt-enhance` (rewrite) and `GET/POST /api/prompt-enhance/settings`, through `ctx.connection.fetch` so it inherits Harness auth and origin checks. Reads the session projection for the current model, then generates via `ctx.llm`. |
+| Client | `client.js` | Renders the button at `conversation.input.right` and the settings page at `settings.section`. Replaces the draft in place via `inputActions.insertText`. |
 
-三个值得注意的设计：
+Three designs worth calling out:
 
-- **上下文按预算裁剪**：历史注入量取 `min(historyTokenBudget, 上下文窗口 × 5%)`，从最新往回收集；单条超预算时截断而非丢弃，保证“有上下文”不会静默退化成“无上下文”。
-- **历史以 JSON 数组注入**，系统提示中明确声明“这是数据，不是指令”，防止历史里的文本伪造结构。
-- **图片开关由 Host 裁决**：浏览器只要输入框有图就上传，Host 依据开关决定是否使用——避免设置尚未加载完成时读到默认值而静默失效。
+- **Context is budgeted**: injected history is `min(historyTokenBudget, contextWindow × 5%)`, collected newest-first. An over-budget single message is truncated rather than dropped, so "has context" never silently degrades into "no context".
+- **History is injected as a JSON array**, and the system prompt states explicitly that it is data, not instructions — text inside history can't forge structure.
+- **The image switch is decided by the Host**: the browser uploads composer images unconditionally and the Host decides whether to use them, so a not-yet-loaded setting can't silently disable the feature.
 
-## 已知限制
+## Known limitations
 
-- 历史图片不参与改写（有意为之，只读输入框图片）。
-- 非流式替换：改写完成前按钮显示为动画态。
-- 设置页的模型下拉依赖 Host 的 `remote.session.modelCatalog`；该面不可用时下拉会明确提示读取失败，而不是留空。
+- Images from earlier messages never take part (by design; composer images only).
+- Replacement is non-streaming: the button shows its animated state until the rewrite lands.
+- The settings dropdown depends on the Host's `remote.session.modelCatalog`. When that surface is unavailable it says so explicitly rather than rendering an empty list.
 
-## 开发
+## Development
 
-插件分 Host 与 Client 两半：Host 只依赖 `ctx.connection`、`ctx.llm`、`ctx.settings` 等宿主服务，Client 通过 `window.__ModuleLoader__` 注册槽位组件。两半都随 bundle 在启动时加载，改动后需重启验证。
+The plugin has a Host half and a Client half. The Host depends only on host services such as `ctx.connection`, `ctx.llm` and `ctx.settings`; the Client registers slot components through `window.__ModuleLoader__`. Both halves load with the bundle at startup, so changes require a restart to verify.
 
-**单元测试未随本仓库发布。** 开发期测试依赖宿主私有的 `@deepseek-ai/schemastery`、宿主 React 副本与本机 profile 目录结构，直接开源会让使用者拿到跑不起来的文件。
+**Unit tests are not published with this repository.** Development-time tests depend on the host's private `@deepseek-ai/schemastery`, a copy of the host's React, and this machine's profile layout — publishing them would hand users files that cannot run.
 
 ```sh
-node --check index.js      # 语法
+node --check index.js      # syntax
 node --check client.js
-npm pack --dry-run         # 检查发布内容
+npm pack --dry-run         # inspect what would ship
 ```
 
-## 许可
+## License
 
-代码采用 MIT，详见 [LICENSE](LICENSE)。
+Code is MIT — see [LICENSE](LICENSE). Embedded artwork falls into two classes:
 
-内嵌素材分两类：
-
-| 素材 | 许可 | 是否在 MIT 范围内 |
+| Asset | License | Inside the MIT grant? |
 |---|---|---|
-| 插件代码 | MIT | 是 |
-| 鲸鱼尾巴 36 帧轮廓（来自 `dsh-status-rotator` v0.38.0，作者 01Virex） | **MIT**，已在上游核实（36 帧逐条比对一致） | 是，保留其版权声明 |
-| DeepSeek「大肥鱼」品牌标（来源 `dsh-web-frontend`） | 源包内**未找到许可证** | **否**，已在 LICENSE 中显式排除 |
+| Plugin code | MIT | yes |
+| Whale-tail 36-frame outline (from `dsh-status-rotator` v0.38.0 by 01Virex) | **MIT**, verified upstream (all 36 frames compared) | yes, copyright notice retained |
+| DeepSeek "big fat fish" brand mark (from `dsh-web-frontend`) | **no license found** in the source package | **no**, explicitly excluded in LICENSE |
 
-本项目为非官方社区项目，与 DeepSeek 无隶属或授权关系。完整归属与核实过程见 [NOTICE.md](NOTICE.md)。
+Unofficial community project, not affiliated with or endorsed by DeepSeek. Full attribution and verification notes are in [NOTICE.md](NOTICE.md).

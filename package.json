@@ -17,8 +17,10 @@
     "locale/*.json",
     "icon.svg",
     "docs/images/*.png",
+    "docs/images/*.gif",
     "screenshots.json",
     "README.md",
+    "README.zh.md",
     "LICENSE",
     "NOTICE.md"
   ],
