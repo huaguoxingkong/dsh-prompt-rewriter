@@ -249,6 +249,103 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
+		 * One enhancement task per session, owned OUTSIDE the component tree.
+		 *
+		 * The composer control is mounted per session and unmounted the moment the
+		 * user switches away. Keeping the in-flight request (and its abort
+		 * controller) inside the component therefore tied the task's lifetime to
+		 * whichever session happened to be on screen: unmounting aborted the fetch
+		 * and the cleanup flagged the component dead, so the reply was discarded
+		 * even if it arrived. Switching sessions looked like "the enhancement was
+		 * cancelled", when in fact the UI had simply outlived it.
+		 *
+		 * This registry is the decoupling point. A task belongs to a sessionId, not
+		 * to a component instance, so it survives unmount, keeps running, and is
+		 * delivered to whichever composer mounts that session later. Two sessions
+		 * get independent entries and cannot interfere.
+		 *
+		 * @returns a small imperative store with subscribe/getSnapshot per session.
+		 */
+		function createTaskStore() {
+			/** sessionId -> task record. Entries are removed once settled and consumed. */
+			const tasks = new Map();
+			/** sessionId -> listener set, so a remount can re-render on progress. */
+			const listeners = new Map();
+			/** Bumped whenever any task changes, so snapshots are stable to compare. */
+			let version = 0;
+			/** Cache of published snapshots, keyed by sessionId, invalidated by version. */
+			const snapshots = new Map();
+
+			const notify = (sessionId) => {
+				version += 1;
+				snapshots.clear();
+				const set = listeners.get(sessionId);
+				if (set === undefined) return;
+				for (const listener of set) listener();
+			};
+
+			/**
+			 * The public view of a session's task. `null` means "nothing known", which
+			 * is what the control renders when the session has no work.
+			 */
+			const snapshot = (sessionId) => {
+				const cached = snapshots.get(sessionId);
+				if (cached !== undefined) return cached;
+				const task = tasks.get(sessionId);
+				const next = task === undefined
+					? null
+					: Object.freeze({ phase: task.phase, failure: task.failure, announce: task.announce, contextAware: task.contextAware, restore: task.restore, result: task.result });
+				snapshots.set(sessionId, next);
+				return next;
+			};
+
+			const subscribe = (sessionId, listener) => {
+				let set = listeners.get(sessionId);
+				if (set === undefined) {
+					set = new Set();
+					listeners.set(sessionId, set);
+				}
+				set.add(listener);
+				return () => {
+					set.delete(listener);
+					if (set.size === 0) listeners.delete(sessionId);
+				};
+			};
+
+			/** Read-or-create the record for a session. */
+			const ensure = (sessionId) => {
+				let task = tasks.get(sessionId);
+				if (task === undefined) {
+					task = { phase: 'idle', failure: null, announce: null, contextAware: false, restore: null, controller: null };
+					tasks.set(sessionId, task);
+				}
+				return task;
+			};
+
+			/** Apply a patch to a session's record and publish it. */
+			const patch = (sessionId, changes) => {
+				const task = ensure(sessionId);
+				Object.assign(task, changes);
+				notify(sessionId);
+			};
+
+			/** Drop a session's record entirely (task finished and was consumed). */
+			const clear = (sessionId) => {
+				if (tasks.delete(sessionId)) notify(sessionId);
+			};
+
+			return { snapshot, subscribe, ensure, patch, clear, get tasks() { return tasks; } };
+		}
+
+		/**
+		 * Sessions whose enhancement finished while their composer was unmounted and
+		 * nobody has looked at them yet. On remount the control picks these up and
+		 * adopts the result, so the user sees the completed task on return instead of
+		 * a silent loss.
+		 */
+		const taskStore = createTaskStore();
+
+		/**
 		 * Composer-side enhancement control: sends the current draft to this
 		 * package's Host half, then replaces the draft in place — never submits.
 		 * Once a replacement lands, the same seat turns into a one-click undo for
@@ -263,34 +360,33 @@ window.__ModuleLoader__.load({
 			// The composer's own attachment list. Only these images may be referenced;
 			// images from earlier turns live in the session log and are never read here.
 			const attachmentIds = useInput((state) => state.attachmentIds);
-			const [busy, setBusy] = useState(false);
-			// Failure text only; success is represented by the undo offer itself.
-			const [failure, setFailure] = useState(null);
-			// Status text for the live region only. A user-initiated pause lands here
-			// instead of `failure`, so it is announced without changing the icon.
-			const [announce, setAnnounce] = useState(null);
-			// True when the last successful run consulted the conversation history.
-			const [contextAware, setContextAware] = useState(false);
-			// `restore` is the undo offer: `text` is the pre-enhancement prompt and
-			// `produced` is the exact draft the swap left behind. The offer dies as
-			// soon as the live draft stops matching `produced`.
-			const [restore, setRestore] = useState(null);
-			const flight = useRef(null);
-			const alive = useRef(false);
-			const ticket = useRef(0);
+			// Task state lives in the module-level registry, keyed by session, so it
+			// outlives this component instance. Switching sessions only changes which
+			// entry is read; it never cancels work.
+			//
+			// A version counter forces a re-render when the task changes while this
+			// component is mounted (progress, failure, completion). The counter is
+			// local state only — it is not the task, so losing it on unmount costs
+			// nothing and cannot cancel work.
+			const [, bumpTaskVersion] = useState(0);
+			useEffect(() => taskStore.subscribe(sessionId, () => bumpTaskVersion((v) => v + 1)), [sessionId]);
+			// The snapshot is read straight from the registry on every render. The version
+			// counter above is what triggers those renders; the value itself never lives
+			// in component state, so unmounting cannot lose or cancel a task.
+			const task = taskStore.snapshot(sessionId);
+			const busy = task?.phase === 'running';
+			const failure = task?.failure ?? null;
+			const announce = task?.announce ?? null;
+			const contextAware = task?.contextAware === true;
+			const restore = task?.restore ?? null;
 			const latestRev = useRef(draftRev);
 			latestRev.current = draftRev;
 
-			// Owns the lifetime of in-flight work: the composer unmounts far more
-			// often than the page reloads, so the abort must follow the component.
-			useEffect(() => {
-				alive.current = true;
-				return () => {
-					alive.current = false;
-					flight.current?.abort();
-					flight.current = null;
-				};
-			}, []);
+			// NO abort on unmount. The component unmounts whenever the user switches
+			// away from this session, and aborting there is exactly what made the
+			// enhancement stop; the request now belongs to the registry and keeps
+			// running until it settles on its own.
+			useEffect(() => () => {}, []);
 
 			const replaceDraft = useCallback(
 				(text, before, rev) => inputActions?.insertText(text, { start: 0, end: before.length, draftRev: rev }) === true,
@@ -301,16 +397,15 @@ window.__ModuleLoader__.load({
 			const undo = useCallback(() => {
 				if (restore === null) return;
 				if (draft !== restore.produced) {
-					setRestore(null);
+					taskStore.patch(sessionId, { restore: null });
 					return;
 				}
 				// Select over the draft the editor actually holds, so any normalization
 				// the composer applied to the model output cannot leave a residue.
 				if (replaceDraft(restore.text, draft, draftRev)) {
-					setRestore(null);
-					setFailure(null);
+					taskStore.patch(sessionId, { restore: null, failure: null });
 				}
-			}, [draft, draftRev, replaceDraft, restore]);
+			}, [draft, draftRev, replaceDraft, restore, sessionId]);
 
 		/** Encode bytes as canonical base64 for the JSON request body. */
 		function bytesToBase64(bytes) {
@@ -365,25 +460,42 @@ window.__ModuleLoader__.load({
 			return { images, skipped };
 		}
 
-		const run = useCallback(() => {
-				if (flight.current !== null) {
-					flight.current.abort();
+			/**
+			 * Start or pause this session's enhancement.
+			 *
+			 * The request runs against the REGISTRY entry, not this closure, so neither
+			 * unmounting (session switch) nor a re-render can cancel it. `phase` in the
+			 * record is the single source of truth for busy/idle, which also makes the
+			 * button state correct when the user returns mid-flight.
+			 */
+			const run = useCallback(() => {
+				const task = taskStore.ensure(sessionId);
+				// Second click means "pause": abort the request this task owns. Because the
+				// controller is stored on the record, it is still reachable no matter which
+				// component instance asked.
+				if (task.phase === 'running' && task.controller !== null) {
+					task.controller.abort();
 					return;
 				}
 				const before = draft;
 				if (before.trim().length === 0) {
-					setFailure(null);
-					setRestore(null);
-					setAnnounce(null);
+					taskStore.patch(sessionId, { failure: null, restore: null, announce: null });
 					return;
 				}
 				const rev = draftRev;
 				const controller = new AbortController();
-				flight.current = controller;
-				const mine = ++ticket.current;
-				setBusy(true);
-				setFailure(null);
-				setAnnounce(null);
+				taskStore.patch(sessionId, {
+					phase: 'running',
+					failure: null,
+					announce: null,
+					controller,
+					// The draft this run rewrites; captured so the reply is validated
+					// against the text that was actually sent.
+					origin: before,
+					originRev: rev,
+				});
+				// Deliberately a floating async task owned by the store: nothing awaits it,
+				// and no component cleanup can reach its abort controller.
 				(async () => {
 					try {
 						// Read the composer's images whenever the draft has any. The Host owns
@@ -407,57 +519,114 @@ window.__ModuleLoader__.load({
 						});
 						if (!response.ok) throw new Error(t('state.transport', { status: response.status }));
 						const payload = await response.json();
-						if (!alive.current || mine !== ticket.current) return;
 						if (payload?.ok !== true) throw new Error(payload?.message || t('state.failed'));
 						const text = typeof payload.text === 'string' ? payload.text : '';
-						if (latestRev.current !== rev || text.trim().length === 0) {
-							setRestore(null);
+						if (text.trim().length === 0) {
+							taskStore.patch(sessionId, { restore: null });
 							return;
 						}
-						if (!replaceDraft(text, before, rev)) {
-							setFailure(t('state.refused'));
-							return;
-						}
-						// Record whether this run was context-aware so the seat can show it.
-						setContextAware(payload?.mode === 'context');
-						// Say so when a picture could not be read, rather than silently
-						// rewriting without it.
 						const skippedImages = Number(payload?.imagesSkipped) || 0;
-						setAnnounce(skippedImages > 0 ? t('state.imagesSkipped', { count: skippedImages }) : null);
-						// Success: the same seat now offers the way back. The produced text
-						// is read from the next published draft, so the offer compares
-						// against what the composer really stored.
-						setRestore({ text: before, produced: null, pending: true });
-					} catch (error) {
-						if (!alive.current || mine !== ticket.current) return;
-						if (controller.signal.aborted) {
-							// The user paused the run themselves. That is not a failure, so
-							// it must not raise the retry mark: fall back to the resting
-							// fish and keep the draft untouched. Screen readers still hear
-							// the cancellation through the live region.
-							setFailure(null);
-							setRestore(null);
-							setAnnounce(t('state.cancelled'));
+						// `applyResult` is the live delivery path, supplied by whichever composer
+						// is currently mounted for this session. When nobody is mounted it is
+						// undefined and the parked result waits for the remount.
+						const apply = taskStore.ensure(sessionId).applyResult;
+						const outcome = typeof apply === 'function' ? apply(text, before, rev) : 'parked';
+						taskStore.patch(sessionId, {
+							contextAware: payload?.mode === 'context',
+							announce: skippedImages > 0 ? t('state.imagesSkipped', { count: skippedImages }) : null,
+						});
+						if (outcome === 'applied') {
+							// The undo offer is only meaningful once the text actually landed in the
+							// editor; offering it after a refused or superseded write would claim a
+							// swap that never happened.
+							taskStore.patch(sessionId, { restore: { text: before, produced: null, pending: true } });
+						} else if (outcome === 'refused') {
+							taskStore.patch(sessionId, { restore: null, failure: t('state.refused') });
+						} else if (outcome === 'parked') {
+							// Nobody is mounted for this session: keep the result for the next mount.
+							taskStore.patch(sessionId, { result: { text, originRev: rev, origin: before }, restore: null });
 						} else {
-							setFailure(error instanceof Error ? error.message : t('state.failed'));
+							// The draft moved on while the user was away; report it instead of
+							// overwriting text they have since edited.
+							taskStore.patch(sessionId, { restore: null, announce: t('state.stale') });
+						}
+					} catch (error) {
+						if (controller.signal.aborted) {
+							// The user paused the run themselves. That is not a failure, so it
+							// must not raise the retry mark: fall back to the resting fish and
+							// keep the draft untouched. Screen readers still hear the
+							// cancellation through the live region.
+							taskStore.patch(sessionId, { failure: null, restore: null, announce: t('state.cancelled') });
+						} else {
+							taskStore.patch(sessionId, { failure: error instanceof Error ? error.message : t('state.failed') });
 						}
 					} finally {
-						if (flight.current === controller) flight.current = null;
-						if (alive.current && mine === ticket.current) setBusy(false);
+						const current = taskStore.ensure(sessionId);
+						if (current.controller === controller) taskStore.patch(sessionId, { phase: 'idle', controller: null });
 					}
 				})();
-			}, [draft, draftRev, replaceDraft, sessionId, t]);
+			}, [attachmentIds, draft, draftRev, sessionId, sessions, t]);
+
+			/**
+			 * Publish this composer as the live delivery target for its session.
+			 *
+			 * The task runs outside the component tree, so when it finishes it needs a
+			 * way to reach whatever editor is on screen RIGHT NOW. Registering the
+			 * applier here is that bridge: mounted → applied immediately; unmounted →
+			 * the parked result waits for the next mount, which re-registers and takes it.
+			 * This replaces the old "effect only runs on mount" delivery, which could not
+			 * see a result that landed after the first render.
+			 */
+			useEffect(() => {
+				const apply = (text, before, rev) => {
+					// Distinguish the two reasons a result may not land, because the user needs
+					// to know which happened: the editor refused the write, or the draft moved
+					// on while the request was in flight.
+					if (latestRev.current !== rev) return 'stale';
+					return replaceDraft(text, before, rev) === true ? 'applied' : 'refused';
+				};
+				taskStore.patch(sessionId, { applyResult: apply });
+				return () => {
+					// Only clear if we are still the registered applier; a remount may have
+					// taken over already.
+					const current = taskStore.ensure(sessionId);
+					if (current.applyResult === apply) taskStore.patch(sessionId, { applyResult: undefined });
+				};
+			}, [replaceDraft, sessionId]);
+
+			// Deliver a parked result: the run finished while this session had no mounted
+			// composer (the user was looking at another conversation). Applying it here
+			// is what makes "switch away and come back" show a completed rewrite instead
+			// of a lost one, and it runs once per result because the record is cleared
+			// after consumption.
+			useEffect(() => {
+				const pendingResult = taskStore.ensure(sessionId).result;
+				if (pendingResult === undefined) return;
+				// Only the composer that owns this session's live editor may write to it.
+				if (inputActions === undefined || typeof inputActions.insertText !== 'function') return;
+				const { text, originRev } = pendingResult;
+				const swapped = latestRev.current === originRev
+					? replaceDraft(text, pendingResult.origin, originRev)
+					: false;
+				// Consume regardless: a stale result must not be re-applied on every mount.
+				taskStore.patch(sessionId, { result: undefined });
+				if (!swapped) {
+					// The draft moved on while the user was away; keep the outcome visible as
+					// a notice instead of overwriting text they have since edited.
+					taskStore.patch(sessionId, { restore: null, announce: t('state.stale') });
+				}
+			}, [inputActions, replaceDraft, sessionId, t]);
 
 			// Adopt the produced draft on the first render after a successful swap,
 			// then retire the offer once the user edits that text.
 			useEffect(() => {
 				if (restore === null) return;
 				if (restore.pending) {
-					setRestore({ text: restore.text, produced: draft, pending: false });
+					taskStore.patch(sessionId, { restore: { text: restore.text, produced: draft, pending: false } });
 					return;
 				}
-				if (restore.produced !== draft) setRestore(null);
-			}, [draft, restore]);
+				if (restore.produced !== draft) taskStore.patch(sessionId, { restore: null });
+			}, [draft, restore, sessionId]);
 
 			if (inputActions === undefined || typeof inputActions.insertText !== 'function') return null;
 
@@ -845,6 +1014,7 @@ window.__ModuleLoader__.load({
 								'state.failed': '增强失败，草稿保持不变。',
 								'state.failedWith': '增强失败：{reason}。点击可重试。',
 								'state.cancelled': '已停止增强，草稿保持不变。',
+								'state.stale': '增强已完成，但草稿在你离开期间被改动，结果未写入。',
 								'state.transport': '增强接口不可用（HTTP {status}），请确认插件已启用。',
 								'state.imagesSkipped': '有 {count} 张图片未能读取，本次增强未参考它们。',
 								// Settings page
@@ -875,6 +1045,7 @@ window.__ModuleLoader__.load({
 								'state.failed': 'Enhancement failed; the draft is unchanged.',
 								'state.failedWith': 'Enhancement failed: {reason}. Click to retry.',
 								'state.cancelled': 'Enhancement stopped; the draft is unchanged.',
+								'state.stale': 'The rewrite finished, but the draft changed while you were away, so it was not applied.',
 								'state.transport': 'The enhancement endpoint is unavailable (HTTP {status}); check that the plugin is enabled.',
 								'state.imagesSkipped': '{count} image(s) could not be read; this enhancement did not use them.',
 								// Settings page

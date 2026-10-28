@@ -36,6 +36,14 @@ The third column is not something you wrote. It read your sentence and filled it
 
 Changed your mind mid-flight? Click again to cancel. The draft stays exactly as it was — no half-finished text left behind.
 
+### You can navigate away mid-rewrite
+
+Once you've clicked, you don't have to sit and wait. **Switch to another session and the task keeps running.**
+
+Come back and the result is already in the composer; if it hasn't finished, the button is still the spinning tail. Two sessions can each run their own rewrite without interfering.
+
+That wasn't true in 1.0.x: switching sessions aborted the task, and coming back showed nothing.
+
 ### The four button states
 
 ![Button states: idle, rewriting, done and undoable, failed and retryable](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/05-button-states-en.gif)
