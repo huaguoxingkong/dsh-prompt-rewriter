@@ -43,8 +43,11 @@ window.__ModuleLoader__.load({
 			// drops the pull and lets the row's own gap do the spacing.
 			'.dsh-pe_root{display:flex;align-items:center;min-width:0;margin-right:-16px}',
 			'@container (width<=560px){.dsh-pe_root{margin-right:-12px}}',
-			'.dsh-pe_root[data-notice="true"]{margin-right:0}',
-			'@container (width<=560px){.dsh-pe_root[data-notice="true"]{margin-right:0}}',
+			// A notice overrides both margins above, so no container-scoped variant is
+			// needed: `0` is the same at every width, and an unconditional rule already
+			// wins on specificity. The earlier @container duplicate of this rule was
+			// dead weight and has been folded in here.
+			'.dsh-pe_root[data-notice="true"]{margin-right:0;max-width:172px}',
 			// 22x22 hit target inside the 28px-tall toolbar row: comfortably clickable
 			// while still reading as a compact toolbar control.
 			'.dsh-pe_button{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;',
@@ -87,8 +90,7 @@ window.__ModuleLoader__.load({
 			// earlier attempts failed for a concrete reason: an uncapped inline notice
 			// ran into the model label, and a `cqw` cap collapsed to nothing when the
 			// row was sized to content. A fixed pixel budget on the seat is stable in
-			// both layouts.
-			'.dsh-pe_root[data-notice="true"]{max-width:172px}',
+			// both layouts; it lives with the seat's other notice rules above.
 			'.dsh-pe_notice{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;',
 			'white-space:nowrap;font-size:11px;line-height:16px;',
 			'color:var(--dsw-alias-state-error-primary)}',

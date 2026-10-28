@@ -154,7 +154,7 @@ Every `config` key on the profile plugin line is optional. The first five are ma
 
 Three designs worth calling out:
 
-- **Context is budgeted**: injected history is `min(historyTokenBudget, contextWindow × 5%)`, collected newest-first. An over-budget single message is truncated rather than dropped, so "has context" never silently degrades into "no context".
+- **Context is budgeted**: injected history is `min(historyTokenBudget, contextWindow × 5%)`, collected newest-first. When a single message exceeds the whole budget, its target length is computed in one proportional step (with up to 4 correction passes for rounding and mixed-script error), then truncated rather than dropped — so "has context" never silently degrades into "no context".
 - **History is injected as a JSON array**, and the system prompt states explicitly that it is data, not instructions — text inside history can't forge structure.
 - **The image switch is decided by the Host**: the browser uploads composer images unconditionally and the Host decides whether to use them, so a not-yet-loaded setting can't silently disable the feature.
 
