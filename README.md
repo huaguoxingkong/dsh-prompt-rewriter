@@ -56,18 +56,22 @@
 
 ## 安装
 
-从本仓库克隆后，把目录作为插件安装：
+从本仓库克隆，装好依赖，再作为插件装进 Harness：
 
 ```powershell
 git clone https://github.com/huaguoxingkong/dsh-prompt-enhance.git
-dsh plugin --profile desktop add .\dsh-prompt-enhance
+cd dsh-prompt-enhance
+npm install                                                   # 只拉 @deepseek-ai/schemastery
+dsh plugin --profile desktop add .
 ```
 
 `dsh` 不在 PATH 时用完整路径（Windows 桌面版默认位置）：
 
 ```powershell
-& "D:\Soft\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add .\dsh-prompt-enhance
+& "D:\Soft\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add .
 ```
+
+`npm install` 这一步是必需的：插件用 `@deepseek-ai/schemastery` 声明设置页的 `Config`，它是本仓库唯一的外部依赖，不装会在启动时报 `Cannot find package`。
 
 安装后需**重启 DeepSeek Harness**。本插件没有 HMR，bundle 在启动时读取快照，不重启不会生效。
 

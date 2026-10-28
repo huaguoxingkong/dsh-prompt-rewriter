@@ -51,11 +51,9 @@
   },
   "homepage": "https://github.com/huaguoxingkong/dsh-prompt-enhance#readme",
   "peerDependencies": {
-    "@deepseek-ai/schemastery": "*"
+    "@deepseek-ai/schemastery": "^3.18.1"
   },
-  "peerDependenciesMeta": {
-    "@deepseek-ai/schemastery": {
-      "optional": true
-    }
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
   }
 }
