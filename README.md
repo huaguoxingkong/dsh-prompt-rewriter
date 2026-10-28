@@ -12,7 +12,7 @@ Turns the half-formed draft in your composer into a task instruction you can act
 
 ---
 
-![One click in the composer turns a draft into a complete prompt](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/01-hero-en.gif)
+![Click the whale-tail icon on the right of the composer and the draft becomes a complete prompt in place](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/01-hero-en.gif)
 
 ## What it fills in for you
 

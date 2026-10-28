@@ -12,7 +12,7 @@
 
 ---
 
-![在输入框里点一下，草稿原地变成完整提示词](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/01-hero.gif)
+![点一下输入框右侧的鲸鱼尾巴图标，草稿原地变成完整提示词](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/01-hero.gif)
 
 ## 它替你补上了什么
 
