@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 dsh-prompt-enhance contributors
+Copyright (c) 2026 dsh-prompt-rewriter contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,50 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-================================================================================
-THIRD-PARTY COMPONENTS
-================================================================================
-
-1) Whale-tail contours — MIT, (c) 2026 01Virex
-   The 36 contours in `TWIST_FRAMES` (and the single frame frozen into
-   `TWIST_STATIC_MASK`) are taken verbatim from `dsh-status-rotator` v0.38.0,
-   which is MIT licensed. That license requires its copyright notice and
-   permission text to accompany the material, so the full text follows:
-
-   ---------------------------------------------------------------------------
-   MIT License
-
-   Copyright (c) 2026 01Virex
-
-   Permission is hereby granted, free of charge, to any person obtaining a copy
-   of this software and associated documentation files (the "Software"), to deal
-   in the Software without restriction, including without limitation the rights
-   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-   copies of the Software, and to permit persons to whom the Software is
-   furnished to do so, subject to the following conditions:
-
-   The above copyright notice and this permission notice shall be included in all
-   copies or substantial portions of the Software.
-
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-   SOFTWARE.
-   ---------------------------------------------------------------------------
-
-2) DeepSeek "大肥鱼" brand mark — EXCLUDED from the MIT grant above
-   The path in `FISH_PATH` / `FISH_VIEWBOX` is the DeepSeek brand mark, taken
-   from the DeepSeek Harness frontend (`dsh-web-frontend`). It is the property
-   of DeepSeek and is included here only so the button matches the Harness UI.
-   The MIT grant above does NOT extend to it. No trademark rights and no
-   endorsement are granted or implied.
-
-This is an UNOFFICIAL community project. It is not affiliated with, authorized
-by, sponsored by, or endorsed by DeepSeek.
-
-If you are a rights holder and object to the inclusion of item 2, open an issue
-and it will be removed promptly. See `NOTICE.md` for full attribution.

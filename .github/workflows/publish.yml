@@ -1,0 +1,65 @@
+name: publish
+
+# Manual dispatch only. A tag pushed by hand should not publish by accident: the
+# release is cut from the Actions UI after CI on main is green, and this workflow
+# verifies the tag/version pair before it touches the registry.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release, e.g. v1.0.0 (must match package.json version)'
+        required: true
+
+permissions:
+  contents: write   # create the GitHub Release
+  id-token: write   # npm Trusted Publishing (OIDC), no long-lived token needed
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      # OIDC publishing needs a recent npm; the runner's bundled one is too old.
+      - run: npm install -g npm@latest && npm --version
+
+      - name: Tag must match package.json
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          [ "${GITHUB_REF_NAME}" = "v${version}" ] || {
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json v${version}"
+            exit 1
+          }
+
+      - name: Refuse to overwrite a published version
+        shell: bash
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if npm view "${name}@${version}" version >/dev/null 2>&1; then
+            echo "::error::${name}@${version} is already on the registry"
+            exit 1
+          fi
+
+      - run: npm install --no-audit --no-fund
+
+      # The publish guard already ran here, so skip the lifecycle script.
+      - run: npm publish --ignore-scripts --access public
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --verify-tag \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

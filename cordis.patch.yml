@@ -2,5 +2,5 @@
 # The package.json `dsh.client` declaration makes the web app load ./client as
 # the browser half, which renders the button inside the composer.
 - insert:
-    - id: dsh-prompt-enhance
-      name: dsh-prompt-enhance
+    - id: dsh-prompt-rewriter
+      name: dsh-prompt-rewriter

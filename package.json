@@ -1,5 +1,5 @@
 {
-  "name": "dsh-prompt-enhance",
+  "name": "dsh-prompt-rewriter",
   "version": "1.0.0",
   "description": "One-click prompt enhancement beside the DeepSeek Harness composer: rewrites a draft in place without sending it.",
   "type": "module",
@@ -16,6 +16,8 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
+    "docs/images/*.png",
+    "screenshots.json",
     "README.md",
     "LICENSE",
     "NOTICE.md"
@@ -44,16 +46,36 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/huaguoxingkong/dsh-prompt-enhance.git"
+    "url": "git+https://github.com/huaguoxingkong/dsh-prompt-rewriter.git"
   },
   "bugs": {
-    "url": "https://github.com/huaguoxingkong/dsh-prompt-enhance/issues"
+    "url": "https://github.com/huaguoxingkong/dsh-prompt-rewriter/issues"
   },
-  "homepage": "https://github.com/huaguoxingkong/dsh-prompt-enhance#readme",
+  "homepage": "https://github.com/huaguoxingkong/dsh-prompt-rewriter#readme",
   "peerDependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@deepseek-ai/dsh-client-ui-conversation": "*",
+    "@deepseek-ai/dsh-client-locale": "*"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "engines": {
+    "dsh": ">=0.1.0",
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-ui-conversation": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-locale": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "prepublishOnly": "node --check index.js && node --check client.js"
   }
 }

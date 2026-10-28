@@ -1,4 +1,4 @@
-# dsh-prompt-enhance
+# dsh-prompt-rewriter
 
 一键把输入框里的草稿改写成更清晰、更完整的提示词，**不发送消息、不运行 Agent**。
 
@@ -6,21 +6,21 @@
 
 ## 界面预览
 
-### 增强按钮的四种状态
+### 按钮就在输入框里，紧挨模型名
 
-输入框为空时按钮不出现；有内容才出现，点击后进入改写动画，完成后变为可回退，失败则给出原因。
+按钮不占额外位置：它挂在输入框右侧、模型名左边，输入框有内容才出现。点一下，草稿原地变成完整提示词，不会发送消息。
 
-![增强按钮的四种状态：隐藏、就绪、改写中、完成回退、失败重试](docs/images/01-button-states.png)
+![输入框旁的增强按钮：草稿从一句话变成完整提示词](docs/images/01-composer-button.png)
 
 ### 改写前后对比
 
-左为原始的一句话草稿，右为改写结果：补全了目标、输出格式与约束条件，可直接交给模型执行。
+原始草稿只有一句话；改写后补全了目标、输出格式与约束条件，可直接交给模型执行。
 
 ![改写前后对比：一句话草稿变成结构完整、可执行的提示词](docs/images/02-before-after.png)
 
 ### 设置页
 
-`设置 → 提示词增强` 提供三个开关与一个模型选择器，只影响增强按钮，不影响正常发送。
+`设置 → 提示词增强` 提供三个开关与一个模型选择器，只影响这个按钮，不影响正常发送。
 
 ![设置页：模型选择、是否参考前文、是否参考输入框图片](docs/images/03-settings.png)
 
@@ -29,6 +29,12 @@
 空会话只处理当前草稿（图标无标记）；会话已有对话时参考前文，图标右下角出现小圆点。
 
 ![两种模式的区别：空会话无标记，有上下文时图标右下角显示小圆点](docs/images/04-context-modes.png)
+
+### 按钮的四种状态
+
+输入框为空时隐藏；有内容才出现。改写中播放动画，完成后变为可回退，失败则显示原因。
+
+![按钮状态：隐藏、就绪、改写中、完成回退、失败重试](docs/images/05-button-states.png)
 
 ## 功能
 
@@ -56,22 +62,49 @@
 
 ## 安装
 
-从本仓库克隆，装好依赖，再作为插件装进 Harness：
+三条路径，按你的情况选一条：
+
+| 方式 | 适合 | 要点 |
+|---|---|---|
+| **npm（推荐）** | 想拿最新版、不想管源码 | 装全局包，再让 `dsh` 指向它 |
+| **从源码克隆** | 想改代码、跟最新提交 | clone 后 `npm install` |
+| **从 Release 下载 zip** | 不想装 git / npm | 解压后 `npm install` |
+
+三者最后都落到同一步：用 `dsh plugin` 把这包装进 profile。区别只在包从哪来。
+
+### 从 npm 安装
 
 ```powershell
-git clone https://github.com/huaguoxingkong/dsh-prompt-enhance.git
-cd dsh-prompt-enhance
-npm install                                                   # 只拉 @deepseek-ai/schemastery
+npm install -g dsh-prompt-rewriter
+dsh plugin --profile desktop add dsh-prompt-rewriter
+```
+
+### 从源码安装
+
+```powershell
+git clone https://github.com/huaguoxingkong/dsh-prompt-rewriter.git
+cd dsh-prompt-rewriter
+npm install
 dsh plugin --profile desktop add .
 ```
+
+### 从 Release 安装
+
+到 [Releases](https://github.com/huaguoxingkong/dsh-prompt-rewriter/releases) 下载最新的 `dsh-prompt-rewriter-1.0.0.zip`，解压后：
+
+```powershell
+cd <解压目录>
+npm install
+dsh plugin --profile desktop add .
+```
+
+`npm install` 是必需的：插件用 `@deepseek-ai/schemastery` 声明设置页的 `Config`，它是唯一外部依赖，不装会在启动时报 `Cannot find package`。
 
 `dsh` 不在 PATH 时用完整路径（Windows 桌面版默认位置）：
 
 ```powershell
 & "D:\Soft\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add .
 ```
-
-`npm install` 这一步是必需的：插件用 `@deepseek-ai/schemastery` 声明设置页的 `Config`，它是本仓库唯一的外部依赖，不装会在启动时报 `Cannot find package`。
 
 安装后需**重启 DeepSeek Harness**。本插件没有 HMR，bundle 在启动时读取快照，不重启不会生效。
 
@@ -80,8 +113,8 @@ dsh plugin --profile desktop add .
 profile 插件行的 `config` 字段全部可选。前五项为设置页托管，后五项为运维上限：
 
 ```yaml
-- id: dsh-prompt-enhance
-  name: dsh-prompt-enhance
+- id: dsh-prompt-rewriter
+  name: dsh-prompt-rewriter
   config:
     # 设置页托管
     useCustomModel: false      # 是否固定使用 enhanceProvider/enhanceModel

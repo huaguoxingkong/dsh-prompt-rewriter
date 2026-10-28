@@ -1,5 +1,5 @@
 /**
- * dsh-prompt-enhance — Host half.
+ * dsh-prompt-rewriter — Host half.
  *
  * Owns one exact `/api/prompt-enhance` route that rewrites a composer draft into
  * a stronger prompt using the Session's currently selected model. The route is
@@ -12,7 +12,7 @@
  * user goals, confirmed constraints, reached conclusions and ruled-out options
  * are supplied so the rewrite cannot contradict what was already settled.
  *
- * @module dsh-prompt-enhance
+ * @module dsh-prompt-rewriter
  */
 
 import z from '@deepseek-ai/schemastery';
@@ -724,7 +724,7 @@ async function handle(scope, config, request, lifetime, windowCache) {
 	}
 }
 
-export const name = 'dsh-prompt-enhance';
+export const name = 'dsh-prompt-rewriter';
 
 /** The route needs the browser connection channel; `llm` stays optional. */
 export const inject = ['connection'];
@@ -739,11 +739,11 @@ const SETTING_KEYS = Object.freeze(['enhanceProvider', 'enhanceModel', 'useCusto
  * The namespace the settings service expects for this plugin.
  *
  * `settings.write()` looks the entry up with `row.options.id === ns`, i.e. the
- * SHORT id the loader row was inserted with — "dsh-prompt-enhance".
+ * SHORT id the loader row was inserted with — "dsh-prompt-rewriter".
  *
  * `fiber.entry.id` is the wrong value: its getter concatenates every ancestor
  * with the ":" separator, so a row inserted into a bundle group reports
- * "include:dsh-prompt-enhance". Passing that makes the lookup fail with
+ * "include:dsh-prompt-rewriter". Passing that makes the lookup fail with
  * `No configurable plugin entry`, which is exactly the save error this plugin
  * used to produce. The short `options.id` is the only value that matches.
  *
@@ -882,7 +882,7 @@ export function apply(ctx, rawConfig) {
 	// Model context windows change only when the route changes, so one memo per
 	// plugin lifetime is enough; it dies with the plugin.
 	const windowCache = new Map();
-	ctx.effect(() => () => lifetime.abort(), 'dsh-prompt-enhance: cancel in-flight requests on unload');
+	ctx.effect(() => () => lifetime.abort(), 'dsh-prompt-rewriter: cancel in-flight requests on unload');
 	ctx.effect(
 		() =>
 			ctx.connection.fetch.register({
@@ -891,7 +891,7 @@ export function apply(ctx, rawConfig) {
 				requestBody: 'buffered',
 				fetch: (request) => handleSettings(ctx, config, request),
 			}),
-		'dsh-prompt-enhance: settings route',
+		'dsh-prompt-rewriter: settings route',
 	);
 	ctx.inject(['llm'], (scope) => {
 		scope.effect(
@@ -902,7 +902,7 @@ export function apply(ctx, rawConfig) {
 					requestBody: 'buffered',
 					fetch: (request) => handle(scope, config, request, lifetime.signal, windowCache),
 				}),
-			'dsh-prompt-enhance: exact enhancement route',
+			'dsh-prompt-rewriter: exact enhancement route',
 		);
 	});
 }

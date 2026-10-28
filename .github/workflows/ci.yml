@@ -1,0 +1,67 @@
+name: ci
+
+# The plugin ships to Windows desktop users, while the harness itself is developed
+# on Linux. Testing one platform only lets path, case-sensitivity and line-ending
+# problems reach users, so both are covered.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Syntax check both entry points
+        run: |
+          node --check index.js
+          node --check client.js
+
+      - name: Manifest is internally consistent
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const j = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            const fail = (m) => { console.error('::error::' + m); process.exit(1); };
+            const patch = j.dsh && j.dsh.bundle && j.dsh.bundle.patch;
+            if (!patch) fail('dsh.bundle.patch is required for market listing');
+            if (!fs.existsSync(patch)) fail('patch file missing: ' + patch);
+            if (j.exports['.']) if (!fs.existsSync(j.exports['.'])) fail('exports . missing');
+            if (j.exports['./client']) if (!fs.existsSync(j.exports['./client'])) fail('exports client missing');
+            for (const f of j.files) {
+              const probe = f.replace('/*', '');
+              if (probe.includes('*')) continue;
+              if (!fs.existsSync(probe)) fail('files entry missing: ' + f);
+            }
+            console.log('manifest ok');
+          "
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Entry point loads
+        shell: bash
+        run: |
+          node --input-type=module -e "
+            import('./index.js')
+              .then((m) => {
+                if (typeof m.apply !== 'function') { console.error('::error::apply is not a function'); process.exit(1); }
+                console.log('loaded:', m.name, '| inject:', JSON.stringify(m.inject));
+              })
+              .catch((e) => { console.error('::error::' + e.message); process.exit(1); });
+          "

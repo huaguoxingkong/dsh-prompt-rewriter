@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-	id: 'dsh-prompt-enhance',
+	id: 'dsh-prompt-rewriter',
 	factory(require) {
 		const React = require('react');
 		const h = React.createElement;
@@ -589,7 +589,7 @@ window.__ModuleLoader__.load({
 						// Keep the reason: an empty picker with no explanation is
 						// indistinguishable from a slow load, and the message is shown to the
 						// user instead of being swallowed.
-						if (typeof console !== 'undefined') console.warn('[dsh-prompt-enhance] model catalog failed:', failure?.message ?? failure);
+						if (typeof console !== 'undefined') console.warn('[dsh-prompt-rewriter] model catalog failed:', failure?.message ?? failure);
 						setCatalog({ status: 'error', groups: [] });
 					}
 				})();
@@ -824,7 +824,7 @@ window.__ModuleLoader__.load({
 		}
 
 		return {
-			name: 'dsh-prompt-enhance',
+			name: 'dsh-prompt-rewriter',
 			// `remote` and its sub-faces are Cordis services that MUST be injected.
 			// The shipped settings page declares exactly this shape
 			// (slots, locale, remote, remote.session, ...). Without `remote.session`
@@ -832,7 +832,7 @@ window.__ModuleLoader__.load({
 			// "读取模型列表失败" in the picker.
 			inject: ['slots', 'locale', 'remote', 'remote.session'],
 			apply(ctx) {
-				ctx.effect(installStyles, 'dsh-prompt-enhance: styles');
+				ctx.effect(installStyles, 'dsh-prompt-rewriter: styles');
 				ctx.effect(
 					() =>
 						ctx.locale.register(NS, {
@@ -897,7 +897,7 @@ window.__ModuleLoader__.load({
 								'settings.images.off': 'Off: text only.',
 							},
 						}),
-					'dsh-prompt-enhance: dictionaries',
+					'dsh-prompt-rewriter: dictionaries',
 				);
 				ctx.slots.inject('conversation.input.right', () =>
 					ctx.slots.register({ name: 'conversation.input.right', id: 'prompt-enhance', order: -100, locale: NS }, EnhanceControl),
@@ -926,7 +926,7 @@ window.__ModuleLoader__.load({
 				// fallback gear with CSS is the only non-invasive route: it touches no
 				// host node's structure, only one attribute on one button, and the mark
 				// disappears with the plugin.
-				ctx.effect(() => installNavMark(t('nav')), 'dsh-prompt-enhance: settings nav mark');
+				ctx.effect(() => installNavMark(t('nav')), 'dsh-prompt-rewriter: settings nav mark');
 			},
 		};
 	},
