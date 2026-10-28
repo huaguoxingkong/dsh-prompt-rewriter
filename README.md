@@ -36,6 +36,14 @@ The third column is not something you wrote. It read your sentence and filled it
 
 Changed your mind mid-flight? Click again to cancel. The draft stays exactly as it was — no half-finished text left behind.
 
+### For faster results, pick a stable model
+
+An enhancement is a real model call, and **how fast the result comes back depends mostly on the model you have selected**.
+
+If it feels slow, switch the session to a model that is more stable and responds faster — the same draft can take a few seconds on one model and well over ten on another. The button does not favour any particular model; it uses whichever one you picked.
+
+> Want a fixed model just for enhancement, without affecting normal chat? Open `Settings → Prompt rewriter` and turn on **Use a fixed model**.
+
 ### You can navigate away mid-rewrite
 
 Once you've clicked, you don't have to sit and wait. **Switch to another session and the task keeps running.**
@@ -63,8 +71,10 @@ That wasn't true in 1.0.x: switching sessions aborted the task, and coming back 
 
 The **small dot in the button's lower-right corner** is the whole difference:
 
-- **Empty session** (no dot): sees only your current draft.
-- **Existing conversation** (dot): also reads earlier turns, so it knows what you already confirmed and already ruled out. The rewrite lands closer to what you actually want this time.
+- **No dot**: it sees only your current draft.
+- **Dot**: it also reads earlier turns, so it knows what you already confirmed and already ruled out. The rewrite lands closer to what you actually want this time.
+
+The dot describes **what will happen if you click now**, not what happened last time. That is why it hides while a run is in flight, comes back after a failure, and disappears once the button turns into an undo arrow — clicking then restores your draft, which has nothing to do with enhancement.
 
 Conversation context costs tokens. If long chats feel slow or expensive, turn off *Reference the conversation* in settings and the dot disappears.
 
@@ -155,6 +165,7 @@ Every `config` key on the profile plugin line is optional. The first five are ma
 Three designs worth calling out:
 
 - **Context is budgeted**: injected history is `min(historyTokenBudget, contextWindow × 5%)`, collected newest-first. When a single message exceeds the whole budget, its target length is computed in one proportional step (with up to 4 correction passes for rounding and mixed-script error), then truncated rather than dropped — so "has context" never silently degrades into "no context".
+- **The output budget grows on demand**: a reasoning model shares one output budget between thinking and answering, so a long draft can spend it all on reasoning and leave nothing for the reply. When the run is cut off by that budget, the plugin doubles it and retries (3500 → 7000 → 14000, capped by the model's declared maximum and never above 16000) instead of misreporting truncation as "the model returned nothing".
 - **History is injected as a JSON array**, and the system prompt states explicitly that it is data, not instructions — text inside history can't forge structure.
 - **The image switch is decided by the Host**: the browser uploads composer images unconditionally and the Host decides whether to use them, so a not-yet-loaded setting can't silently disable the feature.
 

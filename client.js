@@ -75,13 +75,24 @@ window.__ModuleLoader__.load({
 			'.dsh-pe_twist{display:block;width:20px;height:16px;overflow:visible;color:inherit}',
 			'.dsh-pe_twist path{fill:currentColor;fill-rule:evenodd}',
 			'.dsh-pe_icon{display:block;width:15px;height:15px}',
-			// Context-mode mark: a small dot on the seat tells the user this rewrite
-			// consulted the conversation, which is a different risk profile from a
-			// draft-only rewrite. Decorative only; the accessible name carries the text.
+			// Context-mode mark: a dot on the seat that reports an EXPECTATION — "if you
+			// click now, this run will consult the conversation". It is not a record of
+			// the last run, so it is driven by the switch plus the session's available
+			// context, never by a previous response.
+			//
+			// Size: 4px. 3px (the original) read slightly too small beside the fish mark
+			// and 5px was too heavy; 4px stays integral at 1x and 2x DPR.
+			//
+			// Colour: the host theme does NOT define `--dsw-alias-brand-primary`. Its
+			// accent token is the (build-mangled) name below, whose value is #4176e6.
+			// Using a bare `var()` of an undefined token made the dot inherit
+			// `currentColor`, which is why it rendered white. The fallback chain keeps a
+			// blue even if a future theme renames the token again.
 			'.dsh-pe_root[data-context="true"] .dsh-pe_button{position:relative}',
 			'.dsh-pe_root[data-context="true"] .dsh-pe_button::after{content:"";position:absolute;',
-			'right:2px;bottom:2px;width:3px;height:3px;border-radius:50%;',
-			'background:var(--dsw-alias-brand-primary);pointer-events:none}',
+			'right:2px;bottom:2px;width:4px;height:4px;border-radius:50%;',
+			'background:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6);',
+			'pointer-events:none}',
 			// Visible failure notice. A red mark alone never told the user WHY the run
 			// failed; the message now has a real, on-screen outlet instead of living
 			// only in `title` and the visually hidden live region.
@@ -379,8 +390,57 @@ window.__ModuleLoader__.load({
 			const busy = task?.phase === 'running';
 			const failure = task?.failure ?? null;
 			const announce = task?.announce ?? null;
+			// `contextAware` records what the LAST run did. It feeds the accessible name
+			// only; the seat's dot must not use it (see `willUseContext` below).
 			const contextAware = task?.contextAware === true;
 			const restore = task?.restore ?? null;
+
+			// What the NEXT click will do — the only thing the dot reports.
+			//
+			// Two facts decide it, both knowable before any run: whether the
+			// reference-context switch is on, and whether this session actually has
+			// conversation to consult. A previous run's outcome is irrelevant: a failed
+			// or never-attempted enhancement does not change what the next one will do.
+			const [willUseContext, setWillUseContext] = useState(false);
+			// Exposed on the seat as data-ctx-debug so a missing dot can be diagnosed
+			// without guessing: it records which of the two facts was false, and whether
+			// either request failed. Not shown to users; harmless in the DOM.
+			const [ctxProbe, setCtxProbe] = useState('pending');
+			useEffect(() => {
+				let cancelled = false;
+				const read = async () => {
+					try {
+						const [settingsResponse, statusResponse] = await Promise.all([
+							fetch('/api/prompt-enhance/settings', { credentials: 'same-origin' }),
+							fetch(`/api/prompt-enhance/context-status?sessionId=${encodeURIComponent(sessionId)}`, { credentials: 'same-origin' }),
+						]);
+						if (cancelled) return;
+						const settings = settingsResponse.ok ? await settingsResponse.json() : null;
+						const status = statusResponse.ok ? await statusResponse.json() : null;
+						if (cancelled) return;
+						const switchOn = settings?.ok === true && settings.values?.referenceContext !== false;
+						const hasContext = status?.ok === true && status.hasContext === true;
+						setWillUseContext(switchOn && hasContext);
+						setCtxProbe(
+							`sw=${switchOn ? 1 : 0},hc=${hasContext ? 1 : 0},`
+							+ `sHttp=${settingsResponse.status},cHttp=${statusResponse.status}`,
+						);
+					} catch (error) {
+						// An unreachable route means "we cannot promise context"; showing no dot
+						// is the honest default rather than promising a context-aware run.
+						if (!cancelled) {
+							setWillUseContext(false);
+							setCtxProbe(`error:${error?.message ?? 'unknown'}`);
+						}
+					}
+				};
+				read();
+				return () => {
+					cancelled = true;
+				};
+				// Re-read when the session changes or when a run finishes: the first turn
+				// of a conversation creates the context this mark advertises.
+			}, [sessionId, task?.phase]);
 			const latestRev = useRef(draftRev);
 			latestRev.current = draftRev;
 
@@ -633,6 +693,11 @@ window.__ModuleLoader__.load({
 			if (inputActions === undefined || typeof inputActions.insertText !== 'function') return null;
 
 			const canUndo = restore !== null && restore.pending !== true && !busy;
+			// The seat appears only when there is something to act on. An empty composer
+			// with no work in flight has nothing to enhance, so the control stays out of
+			// the way entirely — an available context dot is not a reason to render it,
+			// because a mark on a button that cannot do anything is just noise in the
+			// toolbar for every conversation that has history.
 			const visible = busy || canUndo || failure !== null || draft.trim().length > 0;
 			if (!visible || phase !== 'plain') return null;
 
@@ -644,19 +709,31 @@ window.__ModuleLoader__.load({
 					: failure !== null
 						? t('state.failedWith', { reason: failure })
 						: t('label.idle');
-			// Say so in the accessible name when the rewrite consulted the conversation.
+			// The accessible name may still mention what the last run did; that is a
+			// statement about the past and belongs in a tooltip, not in the dot.
 			const title = contextAware && !busy ? t('label.contextAware', { base: baseTitle }) : baseTitle;
 			const onClick = busy ? run : canUndo ? undo : run;
 			// A pause leaves `failure` null, so the mark returns to the resting fish and
 			// only the live region carries the cancellation text.
 			const status = announce !== null ? announce : title;
+			// The dot advertises the next click, so it is suppressed while a run is in
+			// flight (there is no "next click" to describe) and returns afterwards —
+			// including after a failure, because a failed run does not change what the
+			// next one would do.
+			//
+			// It is also suppressed on the UNDO seat: in that state the button restores
+			// the previous draft instead of starting an enhancement, so a mark describing
+			// "what the next enhancement will do" would describe an action this button no
+			// longer performs.
+			const showContextMark = willUseContext && !busy && !canUndo;
 
 			return h(
 				'div',
 				{
 					className: 'dsh-pe_root',
 					'data-prompt-enhance': '1',
-					'data-context': contextAware && !busy ? 'true' : 'false',
+					'data-context': showContextMark ? 'true' : 'false',
+					'data-ctx-debug': ctxProbe,
 					'data-notice': failure !== null ? 'true' : 'false',
 				},
 				h(

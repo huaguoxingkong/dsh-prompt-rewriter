@@ -15,6 +15,10 @@
  * @module dsh-prompt-rewriter
  */
 
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { zstdDecompressSync } from 'node:zlib';
 import z from '@deepseek-ai/schemastery';
 
 /** Exact route the browser half posts to. */
@@ -69,8 +73,58 @@ const DEFAULTS = Object.freeze({
 	referenceContext: true,
 });
 
+/** Hard stop for the adaptive budget, independent of what a model declares. */
+const MAX_OUTPUT_CEILING = 16000;
+
 /** Share of a model's context window the history may ever consume. */
 const HISTORY_WINDOW_SHARE = 0.05;
+
+/**
+ * Extra completion budget granted on top of `maxOutputTokens`.
+ *
+ * On reasoning-capable models the completion budget covers reasoning AND visible
+ * text, and the adapter reports reasoning as `reasoning-delta` — which this plugin
+ * deliberately does not treat as output. A budget sized only for the rewritten
+ * prompt could therefore be spent entirely on thinking, producing zero text and an
+ * "empty response" that looks like a model fault. The headroom keeps the answer
+ * reachable without changing what the caller asked for.
+ */
+const REASONING_HEADROOM_TOKENS = 1500;
+
+/**
+ * How many times a truncated run may be retried with a larger budget.
+ * Two doublings from the starting budget cover 4x, which is enough for the
+ * reasoning overhead of a long draft without risking a runaway cost.
+ */
+const MAX_BUDGET_ATTEMPTS = 3;
+
+/**
+ * Resolve the largest completion budget this model will accept.
+ *
+ * The plugin must not invent a ceiling: an adapter rejects a `maxTokens` above the
+ * model's own capacity, so the retry ladder has to stop at what the model declares.
+ * When the metadata is unavailable the configured budget stands, which keeps the
+ * old single-shot behaviour rather than guessing high and failing.
+ *
+ * @param scope - plugin context exposing `ctx.llm`.
+ * @param route - provider/model selection.
+ * @param signal - cancellation.
+ * @param config - resolved limits.
+ * @returns the ceiling in tokens.
+ */
+async function resolveTokenCeiling(scope, route, signal, config, cache) {
+	const requested = config.maxOutputTokens + REASONING_HEADROOM_TOKENS;
+	const key = `${route.provider}\u0000${route.model}`;
+	// Reuse the context-window lookup: same metadata, same cache entry, one adapter
+	// call per route instead of two.
+	await resolveContextWindow(scope, route, signal, cache);
+	const declared = cache.get(key)?.outputCap;
+	if (Number.isInteger(declared) && declared > 0) return Math.max(requested, Math.min(declared, MAX_OUTPUT_CEILING));
+	// No declared capacity: allow the full ladder up to the hard ceiling. Returning
+	// `requested` (or 2x it) made the first or second truncation hit the ceiling, so
+	// the adaptive budget silently degraded back to one retry.
+	return MAX_OUTPUT_CEILING;
+}
 
 /**
  * CJK code-point ranges, checked numerically instead of by regex.
@@ -109,6 +163,10 @@ const BASE_RULES = [
 	// Ambiguity must be surfaced, never silently resolved: guessing a specific value
 	// invents a requirement, while leaving it blank silently degrades the prompt.
 	'- When a detail the task genuinely needs is missing or ambiguous, do NOT invent a value and do NOT drop the requirement. Write an explicit placeholder the user can fill (for example "<target file path>") and say briefly what is expected there. Prefer at most a few such placeholders; if the draft already settles a detail, never reopen it.',
+	// A vague draft can tempt the model to template every field, producing a form of
+	// placeholders instead of a usable prompt. The cap below forces a priority call:
+	// keep the blanks that block execution, summarise the rest in one line.
+	'- Use at most 3 placeholders in total. If more details are missing than that, keep only the ones that block execution, and fold the remainder into a single closing line such as "其余细节请补充" rather than inventing a placeholder for each. A prompt the user can run after filling two blanks is better than a complete form they must fill entirely.',
 	// The instruction an executing model follows most reliably is a direct one.
 	'- Address the executing assistant directly and in the imperative. State the task as an instruction to be carried out, not as a description of a task that exists.',
 	'- Keep it tight. No filler, no praise, no meta commentary. Do not add markdown headings unless the draft itself is a document request, and do not use a heading for every field — prefer short labelled lines or a compact list when structure genuinely helps.',
@@ -424,6 +482,153 @@ function trimNewestFirst(derived, config, budget) {
 	return { turns: picked, truncated, tokens: used };
 }
 
+// ---------------------------------------------------------------------------
+// Persisted-log fallback
+// ---------------------------------------------------------------------------
+// The Host keeps sessions on disk as `session.vN.jsonl[.zstd]` under
+// `~/.dsh/sessions/<workspace>/<session-id>/`. After a restart a session that has
+// not been reopened has no in-memory log, so anything that asks "does this
+// conversation have history?" must be able to look at the artifact itself.
+
+/** zstd frame magic; the log is written as one independent frame per row. */
+const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+
+/**
+ * Cache of sessionId → { mtimeMs, hasUser }.
+ *
+ * The probe is cheap but not free (directory walk + a few frame decodes), and the
+ * composer asks on every mount. Keying on the file's mtime keeps the cache honest:
+ * a conversation that gains its first turn changes the file, so the next probe
+ * re-reads instead of serving a stale "no".
+ */
+const persistedProbeCache = new Map();
+
+/**
+ * Workspace directories under the session store, cached for a short while.
+ *
+ * `findSessionLog` has to look for the session's directory inside each workspace.
+ * Re-reading the workspace list on every probe is wasted work: there are hundreds
+ * of session directories and the workspace set changes only when the user opens a
+ * new project. A short TTL keeps a newly created workspace discoverable without
+ * paying a directory read per request.
+ */
+let workspaceCache = { at: 0, dirs: [] };
+const WORKSPACE_CACHE_MS = 30_000;
+
+/**
+ * The session store root.
+ *
+ * Overridable through `DSH_SESSIONS_DIR` so the probe can be exercised without
+ * touching the user's real store, and so a deployment with a non-default DSH home
+ * still works.
+ * @returns the absolute path of the session store.
+ */
+function sessionStoreRoot() {
+	const override = process.env.DSH_SESSIONS_DIR;
+	if (typeof override === 'string' && override.length > 0) return override;
+	return path.join(os.homedir(), '.dsh', 'sessions');
+}
+
+/** @returns the workspace directories under the session store. */
+function sessionWorkspaces() {
+	const now = Date.now();
+	if (now - workspaceCache.at < WORKSPACE_CACHE_MS && workspaceCache.dirs.length > 0) return workspaceCache.dirs;
+	try {
+		const root = sessionStoreRoot();
+		const dirs = fs.readdirSync(root).filter((name) => !name.startsWith('.'));
+		workspaceCache = { at: now, dirs };
+		return dirs;
+	} catch {
+		return [];
+	}
+}
+
+/** Locate one session's log file, or undefined. */
+function findSessionLog(sessionId) {
+	if (typeof sessionId !== 'string' || sessionId.length === 0) return undefined;
+	try {
+		const root = sessionStoreRoot();
+		for (const workspace of sessionWorkspaces()) {
+			const dir = path.join(root, workspace, sessionId);
+			let entries;
+			try {
+				entries = fs.readdirSync(dir);
+			} catch {
+				continue;
+			}
+			const log = entries.find((name) => /^session\.v\d+\.jsonl(\.zstd)?$/u.test(name));
+			if (log !== undefined) return path.join(dir, log);
+		}
+	} catch {
+		// A missing or unreadable store simply means "no persisted history".
+	}
+	return undefined;
+}
+
+/**
+ * Whether a persisted log already contains a user turn.
+ *
+ * Decodes frame by frame and stops at the first row that proves a user message, so
+ * the common case reads a handful of frames instead of the whole file (measured:
+ * 4 of 413 frames, ~0.2ms versus ~18ms for a full decode).
+ *
+ * @param sessionId - the Session id.
+ * @returns true when the log holds at least one user message.
+ */
+function persistedLogHasUser(sessionId) {
+	const file = findSessionLog(sessionId);
+	if (file === undefined) return false;
+	let stat;
+	try {
+		stat = fs.statSync(file);
+	} catch {
+		return false;
+	}
+	const cached = persistedProbeCache.get(sessionId);
+	if (cached !== undefined && cached.mtimeMs === stat.mtimeMs) return cached.hasUser;
+
+	let hasUser = false;
+	try {
+		const raw = fs.readFileSync(file);
+		if (file.endsWith('.zstd')) {
+			const starts = [];
+			let at = 0;
+			while ((at = raw.indexOf(ZSTD_MAGIC, at)) >= 0) {
+				starts.push(at);
+				at += ZSTD_MAGIC.length;
+			}
+			let pending = '';
+			for (let i = 0; i < starts.length && !hasUser; i += 1) {
+				const from = starts[i];
+				const to = i + 1 < starts.length ? starts[i + 1] : raw.length;
+				let chunk;
+				try {
+					chunk = zstdDecompressSync(raw.subarray(from, to)).toString('utf8');
+				} catch {
+					continue;
+				}
+				pending += chunk;
+				const cut = pending.lastIndexOf('\n');
+				if (cut < 0) continue;
+				hasUser = logTextHasUser(pending.slice(0, cut));
+				pending = pending.slice(cut + 1);
+			}
+		} else {
+			hasUser = logTextHasUser(raw.toString('utf8'));
+		}
+	} catch {
+		hasUser = false;
+	}
+	persistedProbeCache.set(sessionId, { mtimeMs: stat.mtimeMs, hasUser });
+	return hasUser;
+}
+
+/** Cheap textual test for a user-authored row in JSONL session text. */
+function logTextHasUser(text) {
+	// Session rows carry the author as `"role":"user"` inside a message payload.
+	return /"role"\s*:\s*"user"/u.test(text);
+}
+
 /**
  * Read the derived message log for one session.
  * @param scope - plugin context with optional Session services.
@@ -442,6 +647,37 @@ function readDerivedMessages(scope, sessionId) {
 	} catch {
 		return [];
 	}
+}
+
+/**
+ * Whether this session already has conversation the rewrite could consult.
+ *
+ * Two sources, cheapest first:
+ *
+ * 1. The live Session, via `deriveMessages()`. Authoritative and free when the
+ *    conversation is loaded.
+ * 2. The persisted log on disk. After a restart the Host keeps sessions on disk and
+ *    only materialises a log once something touches it, so `deriveMessages()` is
+ *    empty for a conversation the user has not reopened — yet the conversation is
+ *    still there, and the next enhancement WILL read it (see `readDerivedMessages`,
+ *    which uses the same fallback). Without this second source the mark vanished
+ *    after every restart until the user sent a message.
+ *
+ * The disk probe stops at the first frame that proves a user message exists, so the
+ * usual case costs a few frames rather than the whole file.
+ *
+ * @param scope - plugin context with optional Session services.
+ * @param sessionId - the browser-reported Session id.
+ * @returns true when at least one user turn exists.
+ */
+function sessionHasContext(scope, sessionId) {
+	const derived = readDerivedMessages(scope, sessionId);
+	for (const message of derived) {
+		if (message?.role === 'user' && messageText(message).length > 0) return true;
+	}
+	if (derived.length > 0) return false;
+	// Nothing in memory: fall back to the persisted log.
+	return persistedLogHasUser(sessionId);
 }
 
 /**
@@ -479,19 +715,25 @@ function collectHistory(derived, config, contextWindow) {
 async function resolveContextWindow(scope, route, signal, cache) {
 	const key = `${route.provider}\u0000${route.model}`;
 	const hit = cache.get(key);
-	if (hit !== undefined) return hit;
+	if (hit !== undefined) return hit.window;
 	try {
 		const info = await scope.llm.resolveModelInfo(route.provider, route.model, signal);
 		const window = info?.context?.contextWindow;
 		const resolved = Number.isInteger(window) && window > 0 ? window : undefined;
+		// The declared output capacity rides along in the same entry: it comes from the
+		// same metadata call, and querying the adapter twice per request would defeat
+		// the point of this cache (each call is an adapter round trip).
+		const declaredOutput = info?.limits?.maxOutputTokens ?? info?.maxOutputTokens ?? info?.context?.maxOutputTokens;
+		const outputCap = Number.isInteger(declaredOutput) && declaredOutput > 0 ? declaredOutput : undefined;
 		// Cache both a real window and a definitive "no window" so a provider that
 		// omits the field is not re-queried on every request.
-		cache.set(key, resolved);
+		cache.set(key, { window: resolved, outputCap });
 		return resolved;
 	} catch (error) {
 		// A cancelled lookup says nothing about the model; caching it would poison
-		// every later request, so only genuine answers are memoized.
-		if (!signal.aborted) cache.set(key, undefined);
+		// every later request. The same holds for any transient metadata failure:
+		// only a definitive ANSWER is memoized, so a failure leaves the cache
+		// untouched and the next request retries.
 		return undefined;
 	}
 }
@@ -579,6 +821,18 @@ async function admitComposerImage(scope, image, signal) {
 
 /**
  * Stream one enhancement request and return the plain rewritten prompt.
+ *
+ * The completion budget is ADAPTIVE. A reasoning model spends `maxTokens` on
+ * thinking before it writes anything, so the budget a plain answer needs is not
+ * the budget a reasoning model needs — and the extra amount depends on the draft,
+ * which the plugin cannot know in advance. Guessing one number is what made long
+ * drafts, drafts containing a URL, or drafts with attachments fail with an empty
+ * reply: the guess was simply too small.
+ *
+ * So the budget grows on demand. If the model stops with `max-tokens`, the run is
+ * retried with a larger budget, up to a ceiling derived from the model's own
+ * capacity. The user sees one slightly slower request, never a spurious failure.
+ *
  * @param scope - plugin context exposing `ctx.llm`.
  * @param config - resolved limits.
  * @param route - provider/model/reasoning selection.
@@ -588,55 +842,98 @@ async function admitComposerImage(scope, image, signal) {
  * @param signal - combined cancellation for this request.
  * @returns the rewritten prompt text.
  */
-async function generate(scope, config, route, draft, history, images, signal) {
+async function generate(scope, config, route, draft, history, images, signal, windowCache) {
 	const llm = scope.llm;
 	if (llm === undefined) throw new EnhanceFailure('UNAVAILABLE', '当前运行的 Harness 未提供模型服务，无法增强提示词。');
 	const providers = llm.listProviders();
 	if (!providers.some((entry) => entry.id === route.provider)) {
 		throw new EnhanceFailure('NO_ADAPTER', `模型提供商「${route.provider}」未启用，请重新选择模型。`);
 	}
-	let call;
-	try {
-		call = await llm.prepareCall(
-			{
-				provider: route.provider,
-				model: route.model,
-				maxTokens: config.maxOutputTokens,
-				...(route.reasoningEffort === undefined ? {} : { reasoningEffort: route.reasoningEffort }),
-			},
-			signal,
-		);
-	} catch (error) {
-		if (signal.aborted) throw error;
-		const code = typeof error?.code === 'string' ? error.code : 'UNKNOWN';
-		throw new EnhanceFailure(code, describeFailure(code, `模型准备失败：${error?.message ?? '未知错误'}`));
-	}
+
 	const system = history.hasContext ? SYSTEM_PROMPT_CONTEXT : SYSTEM_PROMPT_PLAIN;
-	let text = '';
-	let finish;
-	for await (const chunk of call.stream({
-		...call.config,
-		system,
-		messages: [{ role: 'user', content: buildUserContent(draft, history, images) }],
-		signal,
-	})) {
-		signal.throwIfAborted();
-		if (chunk.type === 'text-delta') {
-			text += chunk.text;
-			if (text.length > config.maxOutputChars * 4) throw new EnhanceFailure('TOO_LARGE', '模型返回内容过长，已停止，草稿保持不变。');
-		} else if (chunk.type === 'finish') {
-			finish = chunk.reason;
+	const messages = [{ role: 'user', content: buildUserContent(draft, history, images) }];
+
+	// Start from the configured answer budget plus reasoning headroom, then grow.
+	let budget = config.maxOutputTokens + REASONING_HEADROOM_TOKENS;
+	const ceiling = await resolveTokenCeiling(scope, route, signal, config, windowCache);
+	let lastTruncation = null;
+
+	for (let attempt = 0; attempt < MAX_BUDGET_ATTEMPTS; attempt += 1) {
+		let call;
+		try {
+			call = await llm.prepareCall(
+				{
+					provider: route.provider,
+					model: route.model,
+					maxTokens: Math.min(budget, ceiling),
+					...(route.reasoningEffort === undefined ? {} : { reasoningEffort: route.reasoningEffort }),
+				},
+				signal,
+			);
+		} catch (error) {
+			if (signal.aborted) throw error;
+			const code = typeof error?.code === 'string' ? error.code : 'UNKNOWN';
+			throw new EnhanceFailure(code, describeFailure(code, `模型准备失败：${error?.message ?? '未知错误'}`));
 		}
+
+		let text = '';
+		let finish;
+		// Reasoning is counted for diagnosis only; it is never part of the prompt.
+		let reasoningChars = 0;
+		for await (const chunk of call.stream({ ...call.config, system, messages, signal })) {
+			signal.throwIfAborted();
+			if (chunk.type === 'text-delta') {
+				text += chunk.text;
+				if (text.length > config.maxOutputChars * 4) throw new EnhanceFailure('TOO_LARGE', '模型返回内容过长，已停止，草稿保持不变。');
+			} else if (chunk.type === 'reasoning-delta') {
+				reasoningChars += typeof chunk.text === 'string' ? chunk.text.length : 0;
+			} else if (chunk.type === 'finish') {
+				finish = chunk.reason;
+			}
+		}
+		signal.throwIfAborted();
+
+		if (finish !== undefined && (finish.kind === 'error' || finish.kind === 'aborted')) {
+			const failure = finish.failure;
+			const code = typeof failure?.code === 'string' ? failure.code : 'UNKNOWN';
+			throw new EnhanceFailure(code, describeFailure(code, `模型请求失败${failure?.message === undefined ? '' : `：${failure.message}`}`));
+		}
+
+		// The budget ran out. `max-tokens` is the adapter's explicit signal, and it is
+		// not an error: retry larger rather than blaming the model.
+		if (finish !== undefined && finish.kind === 'max-tokens') {
+			lastTruncation = { reasoningChars };
+			if (budget >= ceiling) break;
+			budget = Math.min(budget * 2, ceiling);
+			continue;
+		}
+
+		const normalized = normalizeOutput(text, config.maxOutputChars);
+		if (normalized.length === 0) {
+			// Nothing usable. Reasoning with no text means the budget was spent thinking,
+			// which a larger retry can still rescue.
+			lastTruncation = { reasoningChars };
+			if (reasoningChars > 0 && budget < ceiling) {
+				budget = Math.min(budget * 2, ceiling);
+				continue;
+			}
+			if (reasoningChars > 0) {
+				throw new EnhanceFailure('EMPTY_REASONING', '模型把输出预算用在了思考上，没有产出提示词。请重试，或在「设置 → 提示词增强」换一个模型。');
+			}
+			throw new EnhanceFailure('EMPTY', '模型没有返回可用的提示词，草稿保持不变。');
+		}
+		return normalized;
 	}
-	signal.throwIfAborted();
-	if (finish !== undefined && (finish.kind === 'error' || finish.kind === 'aborted')) {
-		const failure = finish.failure;
-		const code = typeof failure?.code === 'string' ? failure.code : 'UNKNOWN';
-		throw new EnhanceFailure(code, describeFailure(code, `模型请求失败${failure?.message === undefined ? '' : `：${failure.message}`}`));
-	}
-	const normalized = normalizeOutput(text, config.maxOutputChars);
-	if (normalized.length === 0) throw new EnhanceFailure('EMPTY', '模型没有返回可用的提示词，草稿保持不变。');
-	return normalized;
+
+	// Every attempt ran out of budget. Say so precisely: the cause is the length
+	// limit, and the fix is a shorter draft or a larger ceiling — not a retry.
+	const reasoning = lastTruncation?.reasoningChars ?? 0;
+	throw new EnhanceFailure(
+		'OUTPUT_TRUNCATED',
+		reasoning > 0
+			? `模型在 ${ceiling} token 的输出上限内仍在思考，未能产出提示词。请缩短草稿后重试。`
+			: `模型输出达到 ${ceiling} token 上限仍未完成。请缩短草稿后重试。`,
+	);
 }
 
 /**
@@ -738,7 +1035,7 @@ async function handle(scope, config, request, lifetime, windowCache) {
 			}
 		}
 
-		const text = await generate(scope, config, route, draft, history, images, signal);
+		const text = await generate(scope, config, route, draft, history, images, signal, windowCache);
 		return Response.json({
 			ok: true,
 			text,
@@ -763,6 +1060,16 @@ export const inject = ['connection'];
 
 /** Exact route the browser half uses to read and write the user's preferences. */
 const SETTINGS_PATH = '/api/prompt-enhance/settings';
+
+/**
+ * Read-only route that answers "would an enhancement started right now consult
+ * this session's conversation?".
+ *
+ * The composer needs this BEFORE any run so its mark can describe the next click
+ * rather than the previous result. It is deliberately cheap: no model call, no
+ * token accounting, just a scan for a prior user turn.
+ */
+const CONTEXT_STATUS_PATH = '/api/prompt-enhance/context-status';
 
 /** The row config keys the settings page may write. */
 const SETTING_KEYS = Object.freeze(['enhanceProvider', 'enhanceModel', 'useCustomModel', 'referenceImages', 'referenceContext']);
@@ -924,6 +1231,19 @@ export function apply(ctx, rawConfig) {
 				fetch: (request) => handleSettings(ctx, config, request),
 			}),
 		'dsh-prompt-rewriter: settings route',
+	);
+	ctx.effect(
+		() =>
+			ctx.connection.fetch.register({
+				path: CONTEXT_STATUS_PATH,
+				methods: ['GET'],
+				requestBody: 'buffered',
+				fetch: (request) => {
+					const sessionId = new URL(request.url).searchParams.get('sessionId') ?? undefined;
+					return Response.json({ ok: true, hasContext: sessionHasContext(ctx, sessionId) });
+				},
+			}),
+		'dsh-prompt-rewriter: context-status route',
 	);
 	ctx.inject(['llm'], (scope) => {
 		scope.effect(
