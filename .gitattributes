@@ -1,0 +1,8 @@
+# Normalise line endings in the repository so a Windows clone and a Linux clone
+# produce the same bytes. Without this, git's autocrlf rewrites every file on
+# checkout and shows phantom modifications on otherwise untouched sources.
+* text=auto eol=lf
+
+# These are byte-exact assets; never touch their endings.
+*.png binary
+*.svg text

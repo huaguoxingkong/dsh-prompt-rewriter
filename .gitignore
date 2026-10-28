@@ -1,0 +1,21 @@
+# Dependencies (never publish a local link or a vendored copy)
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Development scratch
+_tmp*
+*.bak
+*.bak-*
+*.log
+_audit/
+_shots/
+_release/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

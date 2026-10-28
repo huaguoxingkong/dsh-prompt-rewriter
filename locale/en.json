@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Prompt Enhance",
+    "description": "Adds a one-click \"Enhance prompt\" control beside the composer: rewrites the draft into a clearer, more complete prompt with the model the session has selected, then puts it back in the input box without sending."
+  }
+}
