@@ -56,11 +56,20 @@
 
 ## 安装
 
+从本仓库克隆后，把目录作为插件安装：
+
 ```powershell
-dsh plugin --profile desktop add <本仓库路径>
+git clone https://github.com/huaguoxingkong/dsh-prompt-enhance.git
+dsh plugin --profile desktop add .\dsh-prompt-enhance
 ```
 
-把 `<本仓库路径>` 换成本地克隆目录。安装后需**重启 DeepSeek Harness**（本插件无 HMR，bundle 在启动时快照读取）。
+`dsh` 不在 PATH 时用完整路径（Windows 桌面版默认位置）：
+
+```powershell
+& "D:\Soft\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add .\dsh-prompt-enhance
+```
+
+安装后需**重启 DeepSeek Harness**。本插件没有 HMR，bundle 在启动时读取快照，不重启不会生效。
 
 ## 配置
 
@@ -108,16 +117,9 @@ profile 插件行的 `config` 字段全部可选。前五项为设置页托管�
 
 ## 开发
 
-插件由两半组成，测试不依赖运行中的 Harness：
+插件分 Host 与 Client 两半：Host 只依赖 `ctx.connection`、`ctx.llm`、`ctx.settings` 等宿主服务，Client 通过 `window.__ModuleLoader__` 注册槽位组件。两半都随 bundle 在启动时加载，改动后需重启验证。
 
-```
-test-host.mjs      Host 路由、配置解析、上下文裁剪、设置读写
-test-client.mjs    输入栏按钮、草稿替换、图片读取、设置页注册
-test-units.mjs     纯函数（分词估算、预算、输出归一化、窗口缓存）
-test-settings.mjs  设置页控件：独立生效、保存载荷、下拉、回显
-```
-
-测试所用 React 与宿主模块（`schemastery` 等）需能从本机解析。若在独立环境跑测试，请自行提供这些依赖。
+**单元测试未随本仓库发布。** 开发期的测试依赖宿主私有的 `@deepseek-ai/schemastery`、宿主 React 副本，以及本机 profile 的目录结构，直接开源会让使用者拿到跑不起来的文件。如果你要为其补充测试，可在装好 Harness 的环境里按上面「结构」一节的入口地址编写。
 
 ## 许可
 
