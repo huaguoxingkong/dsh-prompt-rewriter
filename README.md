@@ -13,6 +13,8 @@
 
 一句话的草稿往往缺目标、缺约束、缺输出格式，模型只能猜。这个插件把草稿改写成可执行的提示词，再放回输入框——你可以先看一眼、改两笔，再决定发不发。
 
+**按钮长在输入框里，不用另开页面。** 位置在输入框右下角、模型名左侧（图中蓝框那一个），输入框有内容时出现，为空时自动隐藏。
+
 ![按钮就在输入框里，紧挨模型名](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/01-composer-button.png)
 
 ## 功能
