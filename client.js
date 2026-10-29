@@ -111,8 +111,21 @@ window.__ModuleLoader__.load({
 			// ---- Settings page -------------------------------------------------
 			// Host theme tokens only, so the page follows light/dark automatically.
 			'.dsh-pe-settings{display:flex;flex-direction:column;gap:4px;max-width:640px}',
-			'.dsh-pe-settingsIntro{margin:0 0 8px;color:var(--dsw-alias-label-secondary);',
+			// Header line: intro on the left, version on the right, the way the plugin
+			// market pairs a description with its package version.
+			'.dsh-pe-settingsHead{display:flex;flex-wrap:wrap;align-items:baseline;',
+			'justify-content:space-between;gap:4px 12px;margin:0 0 8px}',
+			'.dsh-pe-settingsIntro{margin:0;color:var(--dsw-alias-label-secondary);',
 			'font-size:13px;line-height:20px}',
+			// Same weight and colour as the host's own package version labels: muted,
+			// monospace, and unobtrusive until hovered.
+			'.dsh-pe-version{flex:none;font-size:12px;line-height:20px;color:var(--dsw-alias-label-tertiary);',
+			'font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);',
+			'text-decoration:none;border-radius:var(--dsw-radius-sm)}',
+			'a.dsh-pe-version{cursor:pointer}',
+			'a.dsh-pe-version:hover{color:var(--dsw-alias-label-secondary);text-decoration:underline}',
+			'a.dsh-pe-version:focus-visible{outline:none;color:var(--dsw-alias-label-secondary);',
+			'box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
 			// Each row is a two-column flex that WRAPS. Wrapping is what makes the
 			// narrow case work: `@container` cannot be used here because the host
 			// settings panel owns the ancestor chain and declares no container-type,
@@ -789,6 +802,9 @@ window.__ModuleLoader__.load({
 		 */
 		function SettingsSection({ t, getRemote }) {
 			const [values, setValues] = useState(null);
+			// `{ version, url }` reported by the Host from the package manifest. Never
+			// hard-coded here: a release only bumps package.json.
+			const [about, setAbout] = useState(null);
 			const [catalog, setCatalog] = useState({ status: 'loading', groups: [] });
 			const [error, setError] = useState(null);
 			const [saving, setSaving] = useState(false);
@@ -854,6 +870,7 @@ window.__ModuleLoader__.load({
 						if (!alive.current) return;
 						if (body?.ok !== true) throw new Error(body?.message || t('settings.loadFailed', { status: response.status }));
 						setValues(body.values);
+						if (body.about !== undefined) setAbout(body.about);
 					} catch (failure) {
 						if (alive.current && !controller.signal.aborted) setError(failure instanceof Error ? failure.message : String(failure));
 					}
@@ -929,7 +946,21 @@ window.__ModuleLoader__.load({
 			return h(
 				'div',
 				{ className: 'dsh-pe-settings' },
-				h('p', { className: 'dsh-pe-settingsIntro' }, t('settings.intro')),
+				// Intro line with the version at the right, the way the plugin market shows a
+				// package version beside its description. The version links to the project
+				// page and opens in a new tab, so the current session is left untouched.
+				h('div', { className: 'dsh-pe-settingsHead' },
+					h('p', { className: 'dsh-pe-settingsIntro' }, t('settings.intro')),
+					about?.version !== undefined && (about?.url === undefined
+						? h('span', { className: 'dsh-pe-version' }, `v${about.version}`)
+						: h('a', {
+							className: 'dsh-pe-version',
+							href: about.url,
+							target: '_blank',
+							rel: 'noopener noreferrer',
+							title: about.url,
+						}, `v${about.version}`)),
+				),
 
 				row(
 					'model',
@@ -987,7 +1018,10 @@ window.__ModuleLoader__.load({
 				row(
 					'context',
 					t('settings.context.title'),
-					values.referenceContext ? t('settings.context.on') : t('settings.context.off'),
+					// The dot's meaning rides along in the same hint, separated by a space,
+					// so the row stays one comfortable block instead of growing a second
+					// paragraph.
+					`${values.referenceContext ? t('settings.context.on') : t('settings.context.off')} ${t('settings.context.mark')}`,
 					toggle('settings.context', values.referenceContext, (next) => save({ referenceContext: next }, 'settings.context')),
 				),
 
@@ -1109,8 +1143,11 @@ window.__ModuleLoader__.load({
 								'settings.model.loadError': '读取模型列表失败，请重试。',
 								'settings.model.placeholder': '还没选过模型',
 								'settings.context.title': '参考之前的对话',
-								'settings.context.on': '开启：改写时会参考前面聊过的目标和已排除的方案，更贴近你的真实意图。会多耗 token，长对话也更慢。',
-								'settings.context.off': '关闭：只看当前输入，不看之前的对话。',
+								'settings.context.on': '开启：参考前文的目标与已排除方案，更耗 token。',
+								'settings.context.off': '关闭：只看当前输入。',
+								// One short line, merged into the hint above rather than added as its
+								// own row: the dot's meaning is a detail of this switch.
+								'settings.context.mark': '蓝点＝本次会参考上下文。',
 								'settings.images.title': '参考输入框里的图片',
 								'settings.images.on': '开启：输入框里的图片一并参考（历史图片始终不读）。会多耗 token。',
 								'settings.images.off': '关闭：只处理文字。',
@@ -1140,8 +1177,9 @@ window.__ModuleLoader__.load({
 								'settings.model.loadError': 'Could not load the model list. Please retry.',
 								'settings.model.placeholder': 'No model chosen yet',
 								'settings.context.title': 'Use earlier messages',
-								'settings.context.on': 'On: the rewrite also considers goals and ruled-out options from earlier in this conversation. Costs more tokens and is slower in long chats.',
-								'settings.context.off': 'Off: looks only at what you typed, not at earlier messages.',
+								'settings.context.on': 'On: uses earlier goals and ruled-out options; costs more tokens.',
+								'settings.context.off': 'Off: uses only what you typed.',
+								'settings.context.mark': 'Blue dot = this run uses context.',
 								'settings.images.title': 'Use images in the composer',
 								'settings.images.on': 'On: images already attached to your draft are included. Earlier images never are. Costs more tokens.',
 								'settings.images.off': 'Off: text only.',

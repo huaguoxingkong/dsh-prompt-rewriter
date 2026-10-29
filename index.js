@@ -18,6 +18,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { zstdDecompressSync } from 'node:zlib';
 import z from '@deepseek-ai/schemastery';
 
@@ -1103,6 +1104,58 @@ function settingsNamespace(ctx) {
 }
 
 /**
+ * Package facts the settings page shows: version and project URL.
+ *
+ * Read from this package's own `package.json` at runtime rather than hard-coded,
+ * so bumping the manifest is the only step a release needs. Cached after the first
+ * read: the file cannot change while the plugin is loaded.
+ *
+ * @returns `{ version, url }`; fields are undefined when the manifest is absent.
+ */
+function readAbout() {
+	if (aboutCache !== undefined) return aboutCache;
+	let version;
+	let url;
+	try {
+		const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot(), 'package.json'), 'utf8'));
+		version = typeof manifest.version === 'string' ? manifest.version : undefined;
+		// `repository` may be a string or `{ url }`; strip the git+ prefix and .git
+		// suffix so it is directly openable in a browser.
+		const raw = typeof manifest.repository === 'string' ? manifest.repository : manifest.repository?.url;
+		if (typeof raw === 'string') {
+			url = raw
+				.replace(/^git\+/u, '')
+				.replace(/\.git$/u, '')
+				.replace(/^git:\/\//u, 'https://');
+		}
+	} catch {
+		// A missing manifest simply hides the version line; it must not break the page.
+	}
+	aboutCache = { version, url };
+	return aboutCache;
+}
+
+/**
+ * Directory holding this package's manifest.
+ *
+ * `fileURLToPath` is required rather than reading `url.pathname`: a pathname keeps
+ * percent-encoding, so an install directory containing a space ("DSH project")
+ * decoded to a literal `%20` and the manifest read failed silently.
+ *
+ * @returns the package root path.
+ */
+function packageRoot() {
+	try {
+		return path.dirname(fileURLToPath(import.meta.url));
+	} catch {
+		return process.cwd();
+	}
+}
+
+/** Memoized result of {@link readAbout}. */
+let aboutCache;
+
+/**
  * Read the live preference values.
  *
  * The row's config is read from the loader entry on every call, NOT from the
@@ -1147,7 +1200,7 @@ async function handleSettings(ctx, config, request) {
 	if (ns === undefined) return fail('SETTINGS_UNAVAILABLE', '无法定位插件配置项，无法保存选项。');
 
 	if (request.method === 'GET') {
-		return Response.json({ ok: true, values: readPreferences(ctx, config) });
+		return Response.json({ ok: true, values: readPreferences(ctx, config), about: readAbout() });
 	}
 
 	let payload;

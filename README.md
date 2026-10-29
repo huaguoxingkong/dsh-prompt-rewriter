@@ -97,6 +97,7 @@ Only images **currently sitting in the composer** — **never images from earlie
 - The model dropdown lists **the providers and models you actually have** — you can't type in one that doesn't exist.
 - Turning the model switch off does not clear your selection; flipping it back on shows the same choice.
 - Images still uploading are skipped, and the status area tells you how many were missed. A rewrite never fails because of an image.
+- The **current version** sits in the top-right of the settings page; clicking it opens the project home page. Check it before reporting a problem — it makes the issue much easier to pin down.
 
 ## Install
 
