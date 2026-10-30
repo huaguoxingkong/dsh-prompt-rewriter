@@ -1,6 +1,6 @@
 {
   "name": "dsh-prompt-rewriter",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "One-click prompt enhancement beside the DeepSeek Harness composer: rewrites a draft in place without sending it.",
   "type": "module",
   "icon": "icon.svg",
@@ -21,6 +21,7 @@
     "screenshots.json",
     "README.md",
     "README.zh.md",
+    "CHANGELOG.md",
     "LICENSE",
     "NOTICE.md"
   ],
