@@ -53,6 +53,16 @@ Come back and the result is already in the composer; if it hasn't finished, the 
 
 That wasn't true in 1.0.x: switching sessions aborted the task, and coming back showed nothing.
 
+### Keyboard shortcut (off by default)
+
+Turn it on at **Settings → Prompt rewriter → Shortcut**. Desktop uses `Ctrl+E` (`Cmd+E` on macOS); the browser uses `Ctrl+Alt+E` (`Cmd+Alt+E`).
+
+- Press once to enhance; press again while it runs to pause. It acts on the composer of the current conversation.
+- **Same as clicking the icon** — the shortcut runs the icon's own click handler, including its undo state, so the two paths cannot drift. Restoring a draft stays on the button or `Ctrl+Z`.
+- Click the shown combination to record your own; `Esc` cancels. **Reset** restores the default in one click.
+- Already taken by another command? The row names the command it collides with, the combination is not applied, and your previous binding stays.
+- Registered through Harness's shortcut service, so it persists across restarts.
+
 ### The four button states
 
 ![Button states: idle, rewriting, done and undoable, failed and retryable](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/05-button-states-en.gif)
