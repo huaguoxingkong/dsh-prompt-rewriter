@@ -102,25 +102,28 @@
 
 ## 安装
 
-需要 DeepSeek Harness 桌面版，`node >= 22`。**装完必须重启 Harness**——本插件没有 HMR。
+需要 DeepSeek Harness，`node >= 22`。**装完必须重启 Harness**——本插件没有 HMR。
 
 ### 从 npm（推荐）
 
 ```sh
-dsh plugin --profile desktop add dsh-prompt-rewriter
+dsh plugin --profile web add dsh-prompt-rewriter      # Web 版
+dsh plugin --profile desktop add dsh-prompt-rewriter  # 桌面版
 ```
+
+用你实际在跑的那个 profile。插件是 web 平台的前端插件，两种都能用。
 
 ### 从 GitHub 源码
 
 ```sh
-dsh plugin --profile desktop add github:huaguoxingkong/dsh-prompt-rewriter
+dsh plugin --profile web add github:huaguoxingkong/dsh-prompt-rewriter
 ```
 
 源码安装会跑构建步骤，首次可能要求你授权。只对你信任的包给这个权限。
 
 ### 从 Release 的 zip
 
-到 [Releases](https://github.com/huaguoxingkong/dsh-prompt-rewriter/releases) 下载 zip，解压后 `npm install && dsh plugin --profile desktop add .`。
+到 [Releases](https://github.com/huaguoxingkong/dsh-prompt-rewriter/releases) 下载 zip，解压后 `npm install && dsh plugin --profile web add .`。
 
 ## 常见问题
 
