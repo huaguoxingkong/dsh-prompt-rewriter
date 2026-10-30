@@ -51,6 +51,8 @@ export const Config = z.object({
 	enhanceModel: z.string().volatile(),
 	referenceImages: z.boolean().volatile(),
 	referenceContext: z.boolean().volatile(),
+	/** Opt-in keyboard shortcut. Off by default so no global key fires unasked. */
+	shortcutEnabled: z.boolean().volatile(),
 });
 
 /** Defensive defaults; every value is overridable through the row's `config`. */
@@ -72,6 +74,8 @@ const DEFAULTS = Object.freeze({
 	referenceImages: false,
 	// On by default: this is the context-aware enhancement shipped earlier.
 	referenceContext: true,
+	// Off by default: a plugin must not claim a global key unless the user opts in.
+	shortcutEnabled: false,
 });
 
 /** Hard stop for the adaptive budget, independent of what a model declares. */
@@ -260,6 +264,7 @@ function resolveConfig(raw) {
 		useCustomModel: optionalBoolean(config.useCustomModel, DEFAULTS.useCustomModel),
 		referenceImages: optionalBoolean(config.referenceImages, DEFAULTS.referenceImages),
 		referenceContext: optionalBoolean(config.referenceContext, DEFAULTS.referenceContext),
+		shortcutEnabled: optionalBoolean(config.shortcutEnabled, DEFAULTS.shortcutEnabled),
 	};
 }
 
@@ -1073,7 +1078,7 @@ const SETTINGS_PATH = '/api/prompt-enhance/settings';
 const CONTEXT_STATUS_PATH = '/api/prompt-enhance/context-status';
 
 /** The row config keys the settings page may write. */
-const SETTING_KEYS = Object.freeze(['enhanceProvider', 'enhanceModel', 'useCustomModel', 'referenceImages', 'referenceContext']);
+const SETTING_KEYS = Object.freeze(['enhanceProvider', 'enhanceModel', 'useCustomModel', 'referenceImages', 'referenceContext', 'shortcutEnabled']);
 
 /**
  * The namespace the settings service expects for this plugin.
@@ -1179,6 +1184,7 @@ function readPreferences(ctx, config) {
 		useCustomModel: source.useCustomModel === true,
 		referenceImages: source.referenceImages === true,
 		referenceContext: source.referenceContext !== false,
+		shortcutEnabled: source.shortcutEnabled === true,
 	};
 }
 
@@ -1210,7 +1216,7 @@ async function handleSettings(ctx, config, request) {
 		return fail('BAD_REQUEST', '设置请求不是有效的 JSON。');
 	}
 	const patch = {};
-	const BOOLEAN_KEYS = new Set(['useCustomModel', 'referenceImages', 'referenceContext']);
+	const BOOLEAN_KEYS = new Set(['useCustomModel', 'referenceImages', 'referenceContext', 'shortcutEnabled']);
 	for (const key of SETTING_KEYS) {
 		if (payload?.[key] === undefined) continue;
 		if (BOOLEAN_KEYS.has(key)) {
