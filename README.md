@@ -4,6 +4,7 @@ English | [中文](README.zh.md)
 
 [![npm](https://img.shields.io/npm/v/dsh-prompt-rewriter.svg)](https://www.npmjs.com/package/dsh-prompt-rewriter)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/huaguoxingkong/dsh-prompt-rewriter)
 
 Turns the half-formed draft in your composer into a task instruction you can actually run.
 **It rewrites the box, it never sends.** Don't like it? `Ctrl+Z` and you're back.
