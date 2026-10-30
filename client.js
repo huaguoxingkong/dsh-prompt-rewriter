@@ -72,6 +72,9 @@ window.__ModuleLoader__.load({
 			// it and the tail came out only ~12x11px. Height follows the viewBox ratio
 			// and the box is a little larger than the fish mark so the rolling tail
 			// stays legible.
+			// Colour: the official brand blue, not `currentColor`. The tail is a graphic,
+			// not text, so inheriting the button's label colour made it render white on
+			// the dark composer — visually detached from the fish mark it replaces.
 			'.dsh-pe_twist{display:block;width:20px;height:16px;overflow:visible;color:inherit}',
 			'.dsh-pe_twist path{fill:currentColor;fill-rule:evenodd}',
 			'.dsh-pe_icon{display:block;width:15px;height:15px}',
@@ -172,6 +175,22 @@ window.__ModuleLoader__.load({
 			'box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
 			'.dsh-pe-switch:disabled{opacity:.55;cursor:default}',
 			'@media (prefers-reduced-motion:reduce){.dsh-pe-switch,.dsh-pe-switch::after{transition:none}}',
+			// ---- shortcut row ----------------------------------------------------
+			'.dsh-pe-shortcut{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
+			'.dsh-pe-binding{box-sizing:border-box;min-width:96px;height:30px;padding:0 10px;',
+			'border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l2);',
+			'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);',
+			'font:inherit;font-size:12px;line-height:20px;cursor:pointer;',
+			'font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace)}',
+			'.dsh-pe-binding[data-recording="true"]{border-color:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6);',
+			'color:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6)}',
+			'.dsh-pe-binding:focus-visible{outline:none;',
+			'box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
+			'.dsh-pe-reset{height:30px;padding:0 8px;border:0;border-radius:var(--dsw-radius-sm);',
+			'background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;cursor:pointer}',
+			'.dsh-pe-reset:hover:not(:disabled){color:var(--dsw-alias-label-secondary);',
+			'background:var(--dsw-alias-interactive-bg-hover)}',
+			'.dsh-pe-reset:disabled{opacity:.45;cursor:default}',
 			'.dsh-pe-settingsError{margin:8px 0 0;color:var(--dsw-alias-state-error-primary);',
 			'font-size:12px;line-height:18px;overflow-wrap:break-word}',
 			// ---- Settings nav glyph ---------------------------------------------
@@ -360,7 +379,59 @@ window.__ModuleLoader__.load({
 				if (tasks.delete(sessionId)) notify(sessionId);
 			};
 
-			return { snapshot, subscribe, ensure, patch, clear, get tasks() { return tasks; } };
+			/**
+			 * The composer currently mounted for a session, if any.
+			 *
+			 * The shortcut fires globally but the work belongs to one session, so the
+			 * command needs a way to reach that session's live control. The mounted
+			 * component registers itself here; when no composer is mounted there is
+			 * nothing to enhance and the command is a no-op.
+			 */
+			const controls = new Map();
+			/** The most recently mounted composer: what a global shortcut acts on. */
+			let activeSessionId;
+
+			const attach = (sessionId, trigger) => {
+				controls.set(sessionId, trigger);
+				activeSessionId = sessionId;
+				return () => {
+					if (controls.get(sessionId) === trigger) controls.delete(sessionId);
+					// Only clear "active" if this session is still the one recorded.
+					if (activeSessionId === sessionId) activeSessionId = undefined;
+				};
+			};
+			const triggerFor = (sessionId) => controls.get(sessionId);
+			const activeTrigger = () => (activeSessionId === undefined ? undefined : controls.get(activeSessionId));
+
+			/**
+			 * Whether the keyboard command is currently allowed to fire.
+			 *
+			 * Defaults to false so the command is inert until a mounted composer reports
+			 * that the user turned the switch on. That keeps the "off by default" promise
+			 * even in the window before the settings request resolves.
+			 */
+			let shortcutAllowed = false;
+			const setShortcutEnabled = (enabled) => { shortcutAllowed = enabled === true; };
+			const shortcutEnabled = () => shortcutAllowed;
+
+			/**
+			 * When the host last ran our command.
+			 *
+			 * The plugin also watches the keyboard itself (see the fallback listener in
+			 * `apply`). This stamp is how that listener knows the host already fired, so a
+			 * single key press never starts the enhancement twice.
+			 */
+			let lastHostFire = 0;
+			const markHostFire = () => { lastHostFire = Date.now(); };
+			const hostFiredRecently = (windowMs = 400) => lastHostFire !== 0 && Date.now() - lastHostFire < windowMs;
+
+			return {
+				snapshot, subscribe, ensure, patch, clear,
+				attach, triggerFor, activeTrigger,
+				setShortcutEnabled, shortcutEnabled,
+				markHostFire, hostFiredRecently,
+				get tasks() { return tasks; },
+			};
 		}
 
 		/**
@@ -369,7 +440,223 @@ window.__ModuleLoader__.load({
 		 * adopts the result, so the user sees the completed task on return instead of
 		 * a silent loss.
 		 */
+		/**
+		 * The client `sessions` service, resolved once in `apply`.
+		 *
+		 * The composer slot hands its component only `inputActions` — the host declares
+		 * `ctx.uiSession.provide({ props: ["inputActions"] })` — so reading `sessions`
+		 * from props always yielded undefined. `readComposerImages` then took its
+		 * "no session" branch and reported every attachment as skipped, while the
+		 * rewrite itself still succeeded: the user sees the picture ignored, with no
+		 * error anywhere. Resolving the service here restores the image path.
+		 */
+		let sessionService;
+
+		/**
+		 * Resolver for the `conversation` service, published by `apply`.
+		 *
+		 * The component cannot reach `ctx`, and the service must be looked up at call
+		 * time rather than at activation, so `apply` installs the lookup here.
+		 */
+		let conversationResolver = () => undefined;
+
+		/**
+		 * Resolve the client `conversation` service AT CALL TIME.
+		 *
+		 * Composer images live there as browser-only draft descriptors
+		 * (`{ kind: "image", id, previewUrl, file }`) keyed by a browser-local id. That id
+		 * is NOT a persisted attachment id, so `session.readAttachment` can never resolve
+		 * it — which is why every composer image was reported as skipped while the
+		 * rewrite itself still succeeded.
+		 *
+		 * Resolving eagerly during `apply` does not work: this service is registered by
+		 * the conversation plugin, which has not necessarily mounted yet, so the lookup
+		 * returned undefined and stayed undefined for the whole session.
+		 *
+		 * @param ctx - the plugin context captured by `apply`.
+		 * @returns the service, or undefined while it is still absent.
+		 */
+		function resolveConversation(ctx) {
+			for (const source of [ctx, ctx?.root]) {
+				if (source === undefined || typeof source.get !== 'function') continue;
+				try {
+					const found = source.get('conversation');
+					if (found !== undefined) return found;
+				} catch {
+					// Keep looking: a scoped context may refuse the lookup.
+				}
+			}
+			return undefined;
+		}
+
 		const taskStore = createTaskStore();
+
+		/**
+		 * Keyboard shortcuts for the enhance button.
+		 *
+		 * A shortcut is stored in ONE canonical string form ("Ctrl+Shift+J") so that
+		 * the settings page, the binding and the conflict message all agree on the same
+		 * representation. Everything else (capturing a keystroke, matching an event,
+		 * showing it on macOS) is derived from that one form.
+		 */
+
+		/** Accelerators the host or the platform already owns, with who owns them. */
+		const RESERVED = Object.freeze([
+			// The composer itself.
+			{ combo: 'Enter', owner: '发送消息' },
+			{ combo: 'Shift+Enter', owner: '输入框内换行' },
+			{ combo: 'Ctrl+Enter', owner: '插话发送排队消息（DSH）' },
+			{ combo: 'Meta+Enter', owner: '插话发送排队消息（DSH）' },
+			// Editing: the browser and every text field rely on these.
+			{ combo: 'Ctrl+C', owner: '复制' },
+			{ combo: 'Ctrl+V', owner: '粘贴' },
+			{ combo: 'Ctrl+X', owner: '剪切' },
+			{ combo: 'Ctrl+A', owner: '全选' },
+			{ combo: 'Ctrl+Z', owner: '撤销' },
+			{ combo: 'Ctrl+Y', owner: '重做' },
+			{ combo: 'Ctrl+Shift+Z', owner: '重做' },
+			{ combo: 'Ctrl+F', owner: '查找' },
+			{ combo: 'Ctrl+P', owner: '打印 / 快速打开' },
+			{ combo: 'Ctrl+S', owner: '保存' },
+			{ combo: 'Ctrl+W', owner: '关闭标签页' },
+			{ combo: 'Ctrl+T', owner: '新建标签页' },
+			{ combo: 'Ctrl+N', owner: '新建窗口' },
+			{ combo: 'Ctrl+R', owner: '刷新页面' },
+			{ combo: 'Ctrl+L', owner: '聚焦地址栏' },
+			// Browser / devtools combinations.
+			{ combo: 'Ctrl+Shift+I', owner: '开发者工具' },
+			{ combo: 'Ctrl+Shift+J', owner: '开发者工具控制台' },
+			{ combo: 'Ctrl+Shift+C', owner: '元素检查器' },
+			{ combo: 'Ctrl+Shift+E', owner: '网络面板 / 搜索' },
+			{ combo: 'Ctrl+Shift+K', owner: '开发者工具控制台' },
+			{ combo: 'Ctrl+Shift+M', owner: '响应式视图' },
+			{ combo: 'Ctrl+Shift+N', owner: '无痕窗口' },
+			{ combo: 'Ctrl+Shift+P', owner: '命令面板' },
+			{ combo: 'Ctrl+Shift+T', owner: '恢复关闭的标签页' },
+			{ combo: 'Ctrl+Shift+W', owner: '关闭窗口' },
+			// Function keys the OS or browser claims.
+			{ combo: 'F1', owner: '帮助' },
+			{ combo: 'F5', owner: '刷新' },
+			{ combo: 'F11', owner: '全屏' },
+			{ combo: 'F12', owner: '开发者工具' },
+		]);
+
+		/** The combination that ships enabled; must match the Host default. */
+		const DEFAULT_SHORTCUT = 'Alt+Shift+E';
+
+		/**
+		 * Combinations this plugin registers itself. A new binding is checked against
+		 * this list as well as RESERVED, so two of our own shortcuts cannot collide.
+		 * Only the enhance button exists today; the list is the extension point.
+		 */
+		const OWN_SHORTCUTS = Object.freeze([{ id: 'enhance', combo: DEFAULT_SHORTCUT }]);
+
+		/** Keys that only modify; pressing one alone must not become a binding. */
+		const BARE_MODIFIERS = new Set(['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'CapsLock']);
+
+		/** Map a KeyboardEvent.key to the token stored in a canonical combo. */
+		function keyToken(event) {
+			const k = event.key;
+			if (k === undefined || k === '') return undefined;
+			if (BARE_MODIFIERS.has(k)) return undefined;
+			if (k === ' ') return 'Space';
+			if (k.length === 1) return k.toUpperCase();
+			return k;
+		}
+
+		/**
+		 * Build the canonical string for an event.
+		 *
+		 * Ctrl and Meta are stored separately so one stored value keeps its meaning
+		 * across platforms; matching translates them (see matchesCombo).
+		 *
+		 * @returns the canonical combo, or undefined for a bare modifier / dead key.
+		 */
+		function comboFromEvent(event) {
+			const key = keyToken(event);
+			if (key === undefined) return undefined;
+			const parts = [];
+			if (event.ctrlKey === true) parts.push('Ctrl');
+			if (event.altKey === true) parts.push('Alt');
+			if (event.shiftKey === true) parts.push('Shift');
+			if (event.metaKey === true) parts.push('Meta');
+			parts.push(key);
+			return parts.join('+');
+		}
+
+		/**
+		 * A binding needs a modifier, except the function keys, which stand alone by
+		 * convention. Without this, typing a bare letter into the recorder would
+		 * register that letter and swallow it everywhere in the composer.
+		 */
+		function isBindable(combo) {
+			if (typeof combo !== 'string' || combo.length === 0) return false;
+			const parts = combo.split('+');
+			if (parts.length < 2) return /^F([1-9]|1[0-2])$/u.test(combo);
+			return true;
+		}
+
+		/** Render a combo for the current platform: symbols on macOS, names elsewhere. */
+		function formatCombo(combo) {
+			if (typeof combo !== 'string' || combo.length === 0) return '';
+			const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.platform ?? '');
+			return combo
+				.split('+')
+				.map((part) => {
+					if (!mac) return part === 'Meta' ? 'Win' : part;
+					if (part === 'Ctrl') return '⌃';
+					if (part === 'Alt') return '⌥';
+					if (part === 'Shift') return '⇧';
+					if (part === 'Meta') return '⌘';
+					return part;
+				})
+				.join(mac ? '' : '+');
+		}
+
+		/**
+		 * Does a keyboard event trigger this combo?
+		 *
+		 * Ctrl and Meta are interchangeable so one stored value works on both
+		 * platforms: on macOS the Ctrl in the canonical form matches ⌘, which is where
+		 * the primary modifier lives there.
+		 */
+		function matchesCombo(event, combo) {
+			if (typeof combo !== 'string' || combo.length === 0) return false;
+			const parts = combo.split('+');
+			const key = parts[parts.length - 1];
+			const mods = new Set(parts.slice(0, -1));
+			const wantPrimary = mods.has('Ctrl') || mods.has('Meta');
+			const primary = event.ctrlKey === true || event.metaKey === true;
+			if (wantPrimary !== primary) return false;
+			if (mods.has('Alt') !== (event.altKey === true)) return false;
+			if (mods.has('Shift') !== (event.shiftKey === true)) return false;
+			return keyToken(event) === key;
+		}
+
+		/**
+		 * Explain why a combo cannot be used, or return undefined when it is fine.
+		 *
+		 * Order matters: an unusable combo (a bare letter) is reported before a
+		 * conflict, because "bind a modifier" is the more actionable message.
+		 *
+		 * @param combo - canonical combo to test.
+		 * @returns a message naming the conflicting owner, or undefined.
+		 */
+		function describeConflict(combo) {
+			if (!isBindable(combo)) {
+				return '快捷键需要包含 Ctrl、Alt、Shift 或 ⌘（功能键 F1–F12 除外）。';
+			}
+			const reserved = RESERVED.find((entry) => entry.combo === combo);
+			if (reserved !== undefined) {
+				return formatCombo(combo) + ' 已被占用：' + reserved.owner + '。请换一个组合。';
+			}
+			const own = OWN_SHORTCUTS.find((entry) => entry.combo === combo);
+			if (own !== undefined) {
+				const label = own.id === 'enhance' ? '增强提示词' : own.id;
+				return formatCombo(combo) + ' 已被本插件的「' + label + '」占用，不能重复绑定。';
+			}
+			return undefined;
+		}
 
 		/**
 		 * Composer-side enhancement control: sends the current draft to this
@@ -379,7 +666,9 @@ window.__ModuleLoader__.load({
 		 * original edit, so both routes remain valid.
 		 */
 		function EnhanceControl(props) {
-			const { sessionId, useInput, inputActions, sessions, t } = props;
+			const { sessionId, useInput, inputActions, t } = props;
+			// Props first (in case a host supplies it), then the service resolved in apply.
+			const sessions = props.sessions ?? sessionService;
 			const draft = useInput((state) => state.draft);
 			const draftRev = useInput((state) => state.draftRev);
 			const phase = useInput((state) => state.phase);
@@ -415,6 +704,10 @@ window.__ModuleLoader__.load({
 			// conversation to consult. A previous run's outcome is irrelevant: a failed
 			// or never-attempted enhancement does not change what the next one will do.
 			const [willUseContext, setWillUseContext] = useState(false);
+			// Whether the keyboard command is active for this profile. Default OFF: the
+			// feature is opt-in, so a global key never fires on a user who did not ask for
+			// it. Read from the same settings response as the other switches.
+			const [shortcutOn, setShortcutOn] = useState(false);
 			// Exposed on the seat as data-ctx-debug so a missing dot can be diagnosed
 			// without guessing: it records which of the two facts was false, and whether
 			// either request failed. Not shown to users; harmless in the DOM.
@@ -434,7 +727,10 @@ window.__ModuleLoader__.load({
 						const switchOn = settings?.ok === true && settings.values?.referenceContext !== false;
 						const hasContext = status?.ok === true && status.hasContext === true;
 						setWillUseContext(switchOn && hasContext);
-						setCtxProbe(
+						const allowed = settings?.ok === true && settings.values?.shortcutEnabled === true;
+						setShortcutOn(allowed);
+						taskStore.setShortcutEnabled(allowed);
+							setCtxProbe(
 							`sw=${switchOn ? 1 : 0},hc=${hasContext ? 1 : 0},`
 							+ `sHttp=${settingsResponse.status},cHttp=${statusResponse.status}`,
 						);
@@ -456,6 +752,10 @@ window.__ModuleLoader__.load({
 			}, [sessionId, task?.phase]);
 			const latestRev = useRef(draftRev);
 			latestRev.current = draftRev;
+			// The live draft text, for the same reason as the revision: a delivery can be
+			// attempted from a closure created in an earlier render (or an earlier mount).
+			const latestDraft = useRef(draft);
+			latestDraft.current = draft;
 
 			// NO abort on unmount. The component unmounts whenever the user switches
 			// away from this session, and aborting there is exactly what made the
@@ -505,30 +805,47 @@ window.__ModuleLoader__.load({
 		 * @param signal - cancellation.
 		 * @returns the encoded images, plus how many could not be read.
 		 */
-		async function readComposerImages(sessions, sessionId, ids, signal) {
+		/**
+		 * Read the composer images the draft is currently carrying.
+		 *
+		 * The ids in the composer state are browser-local draft ids. They are resolved by
+		 * the `conversation` service, which owns the draft descriptor and therefore the
+		 * original `File`. Reading through `session.readAttachment` looks correct but can
+		 * never work: that API resolves PERSISTED attachment ids, a different id space, so
+		 * every image came back as skipped.
+		 *
+		 * @param conversation - the `conversation` client service.
+		 * @param ids - draft attachment ids from the composer state.
+		 * @param signal - cancellation.
+		 * @returns `{ images, skipped }`.
+		 */
+		async function readComposerImages(conversation, ids, signal) {
 			const images = [];
 			let skipped = 0;
 			if (!Array.isArray(ids) || ids.length === 0) return { images, skipped };
-			const session = sessions?.binding(sessionId)?.session;
-			if (session === undefined) return { images, skipped: ids.length };
-			for (const id of ids.slice(0, 4)) {
+			if (conversation === undefined || typeof conversation.resolveDraftAttachments !== 'function') {
+				return { images, skipped: ids.length };
+			}
+			let descriptors;
+			try {
+				descriptors = conversation.resolveDraftAttachments(ids) ?? [];
+			} catch {
+				return { images, skipped: ids.length };
+			}
+			for (const descriptor of descriptors.slice(0, 4)) {
+				if (signal.aborted) return { images, skipped };
+				if (descriptor?.kind !== 'image') continue;
+				const file = descriptor.file;
+				const mediaType = typeof file?.type === 'string' ? file.type : '';
+				if (!mediaType.startsWith('image/') || typeof file.arrayBuffer !== 'function') {
+					skipped += 1;
+					continue;
+				}
 				try {
-					const result = await session.readAttachment(id);
+					const bytes = new Uint8Array(await file.arrayBuffer());
 					if (signal.aborted) return { images, skipped };
-					if (!result?.ok) {
-						skipped += 1;
-						continue;
-					}
-					const mediaType = result.value?.attachment?.mediaType;
-					const bytes = result.value?.data;
-					if (typeof mediaType !== 'string' || !mediaType.startsWith('image/') || bytes === undefined) {
-						// A non-image draft attachment is simply not part of this feature.
-						continue;
-					}
-					images.push({ data: bytesToBase64(new Uint8Array(bytes)), mediaType, name: result.value?.attachment?.name });
+					images.push({ data: bytesToBase64(bytes), mediaType, name: file.name });
 				} catch {
-					// An attachment that is still uploading, or already gone, is skipped
-					// rather than failing the whole rewrite.
 					skipped += 1;
 				}
 			}
@@ -581,10 +898,13 @@ window.__ModuleLoader__.load({
 						// the default `false` and silently sent no images even though the
 						// user had enabled the option. Letting the Host decide removes that
 						// race entirely and keeps one authority for the switch.
+						// Resolved here, not at activation: the service mounts with the
+						// conversation plugin, which can come up after this plugin.
+						const conversation = attachmentIds.length > 0 ? conversationResolver() : undefined;
 						const collected = attachmentIds.length > 0
-							? await readComposerImages(sessions, sessionId, attachmentIds, controller.signal)
+							? await readComposerImages(conversation, attachmentIds, controller.signal)
 							: { images: [], skipped: 0 };
-						if (controller.signal.aborted) return;
+							if (controller.signal.aborted) return;
 						const response = await fetch('/api/prompt-enhance', {
 							method: 'POST',
 							credentials: 'same-origin',
@@ -642,6 +962,36 @@ window.__ModuleLoader__.load({
 				})();
 			}, [attachmentIds, draft, draftRev, sessionId, sessions, t]);
 
+			// Always points at the newest `onClick`. The keyboard effect depends on this ref
+			// rather than on `onClick` itself, so it does not tear down and rebuild the
+			// registration on every keystroke — while still invoking the current handler.
+			const onClickRef = useRef(null);
+
+			// Publish the seat's click handler as this session's keyboard entry point.
+			//
+			// The shortcut must do exactly what clicking the fish does — including the
+			// undo branch when a finished rewrite is being offered — so it publishes
+			// `onClick` (defined below, once the render state is known) rather than the
+			// bare `run`. Publishing `run` made the two diverge whenever the seat was in
+			// its undo state: the mouse restored the draft, the keyboard started a new
+			// enhancement.
+			//
+			// `onClick` is recomputed on every render (it reads `busy` and `canUndo`), so
+			// this effect re-attaches with it and the shortcut always acts on the current
+			// draft and current seat state.
+			//
+			// CRITICAL: this hook must run before the `return null` guards further down.
+			// React requires the same hook count on every render, and the seat returns null
+			// while the draft is empty — placing this after those guards crashed the whole
+			// composer control.
+			useEffect(() => {
+				if (!shortcutOn) {
+					// The feature is off: make sure no stale handler answers the command.
+					return undefined;
+				}
+				return taskStore.attach(sessionId, () => onClickRef.current());
+			}, [sessionId, shortcutOn]);
+
 			/**
 			 * Publish this composer as the live delivery target for its session.
 			 *
@@ -657,7 +1007,11 @@ window.__ModuleLoader__.load({
 					// Distinguish the two reasons a result may not land, because the user needs
 					// to know which happened: the editor refused the write, or the draft moved
 					// on while the request was in flight.
-					if (latestRev.current !== rev) return 'stale';
+					// The revision is per-mount state: after a session switch the captured `rev`
+					// belongs to the previous mount and can never match again, which made a
+					// finished rewrite look like it had simply stopped. The draft being unchanged
+					// is the real invariant, so accept either signal.
+					if (latestRev.current !== rev && latestDraft.current !== before) return 'stale';
 					return replaceDraft(text, before, rev) === true ? 'applied' : 'refused';
 				};
 				taskStore.patch(sessionId, { applyResult: apply });
@@ -680,9 +1034,15 @@ window.__ModuleLoader__.load({
 				// Only the composer that owns this session's live editor may write to it.
 				if (inputActions === undefined || typeof inputActions.insertText !== 'function') return;
 				const { text, originRev } = pendingResult;
-				const swapped = latestRev.current === originRev
+				// Same reasoning as the live path: a remount invalidates originRev, so the
+				// unchanged draft is what authorises the write. The editor is addressed with
+				// its current revision, not the one captured before the switch.
+				const unchanged = latestDraft.current === pendingResult.origin;
+				const swapped = unchanged && latestRev.current === originRev
 					? replaceDraft(text, pendingResult.origin, originRev)
-					: false;
+					: unchanged
+						? replaceDraft(text, pendingResult.origin, latestRev.current)
+						: false;
 				// Consume regardless: a stale result must not be re-applied on every mount.
 				taskStore.patch(sessionId, { result: undefined });
 				if (!swapped) {
@@ -706,6 +1066,12 @@ window.__ModuleLoader__.load({
 			if (inputActions === undefined || typeof inputActions.insertText !== 'function') return null;
 
 			const canUndo = restore !== null && restore.pending !== true && !busy;
+			// The seat's click handler, computed here rather than next to the JSX so the ref
+			// below can be updated before the early returns. It is the single entry point
+			// both the button and the keyboard command use.
+			const onClick = busy ? run : canUndo ? undo : run;
+			onClickRef.current = onClick;
+
 			// The seat appears only when there is something to act on. An empty composer
 			// with no work in flight has nothing to enhance, so the control stays out of
 			// the way entirely — an available context dot is not a reason to render it,
@@ -725,7 +1091,7 @@ window.__ModuleLoader__.load({
 			// The accessible name may still mention what the last run did; that is a
 			// statement about the past and belongs in a tooltip, not in the dot.
 			const title = contextAware && !busy ? t('label.contextAware', { base: baseTitle }) : baseTitle;
-			const onClick = busy ? run : canUndo ? undo : run;
+
 			// A pause leaves `failure` null, so the mark returns to the resting fish and
 			// only the live region carries the cancellation text.
 			const status = announce !== null ? announce : title;
@@ -789,6 +1155,155 @@ window.__ModuleLoader__.load({
 			return `@keyframes dsh-pe-twist{${steps}100%{d:path('${TWIST_FRAMES[0]}')}}`;
 		}
 
+		/** The command id this plugin registers with the host shortcuts service. */
+		const SHORTCUT_ID = 'prompt-enhance.run';
+
+		/**
+		 * Read and edit this plugin's keyboard binding through the host shortcuts service.
+		 *
+		 * Everything authoritative lives in the host: it renders the resolved keys (so a
+		 * locale-appropriate name like "Ctrl+Shift+Enter" comes from the host, not from
+		 * us), it stores the override in the profile, and it is the one that knows which
+		 * other commands a candidate would collide with.
+		 *
+		 * @param shortcuts - the injected `ctx.shortcuts` face.
+		 * @param t - localized translator, for host-reported failure states.
+		 * @returns `{ keys, isDefault, assign, reset, refresh }`.
+		 */
+		function useShortcutBinding(shortcuts, t) {
+			const [state, setState] = useState({ keys: '', isDefault: true, revision: undefined });
+			const alive = useRef(false);
+			alive.current = true;
+
+			/** Re-read the resolved binding from the host catalog. */
+			const refresh = useCallback(() => {
+				if (shortcuts === undefined) return;
+				try {
+					const snapshot = shortcuts.catalog?.getSnapshot?.() ?? shortcuts.catalog ?? [];
+					const row = Array.isArray(snapshot) ? snapshot.find((entry) => entry.id === SHORTCUT_ID) : undefined;
+					const config = shortcuts.config?.getSnapshot?.() ?? shortcuts.config;
+					const revision = config?.revision;
+					if (row === undefined) return;
+					setState({
+						// `keys` is the host's own display form of the resolved binding.
+						keys: Array.isArray(row.keys) ? row.keys.filter((key) => key !== '+').join('+') : '',
+						// `modified` marks a stored override; without one the row shows the default.
+						isDefault: row.modified !== true,
+						revision,
+					});
+				} catch {
+					// A catalog that is not ready yet simply leaves the row showing its last
+					// known value; the host re-renders when it settles.
+				}
+			}, [shortcuts]);
+
+			/**
+			 * Read the host's CURRENT revision.
+			 *
+			 * `accept()` mints a fresh UUID for every accepted write:
+			 * `this.snapshot = { ...snapshot, revision: randomUUID() }`. Caching the
+			 * revision from mount therefore makes every later edit "stale" — the host
+			 * refuses it with `if (revision !== this.snapshot.revision) return result("stale")`.
+			 * That is why 恢复默认 did nothing and the old override kept showing.
+			 */
+			const revisionOf = useCallback(() => {
+				const config = shortcuts?.config?.getSnapshot?.() ?? shortcuts?.config;
+				return config?.revision;
+			}, [shortcuts]);
+
+			/**
+			 * Submit one edit against the live revision, retrying once on "stale".
+			 *
+			 * A stale result means the revision rotated between our read and the write, so
+			 * the retry re-reads it. Without this the very first edit works and every
+			 * subsequent one is refused — the state a user hits after recording a binding
+			 * and then trying to reset it.
+			 */
+			const applyEdit = useCallback(async (operation) => {
+				if (shortcuts === undefined) return { status: 'unavailable' };
+				let result = await shortcuts.edit(operation, revisionOf());
+				if (result?.status === 'stale') {
+					refresh();
+					result = await shortcuts.edit(operation, revisionOf());
+				}
+				if (result?.status === 'saved') refresh();
+				return result;
+			}, [refresh, revisionOf, shortcuts]);
+
+			useEffect(() => {
+				refresh();
+				// The host publishes catalog changes; following them keeps this row honest
+				// when a binding is changed from the general Settings page instead.
+				const unsubscribe = shortcuts?.catalog?.subscribe?.(refresh);
+				return () => {
+					alive.current = false;
+					if (typeof unsubscribe === 'function') unsubscribe();
+				};
+			}, [refresh, shortcuts]);
+
+			/**
+			 * Ask the host to bind a candidate combination.
+			 *
+			 * `shortcuts.edit` is ASYNC and resolves to `{ status }`; reading `result.status`
+			 * synchronously yielded `undefined`, which surfaced as "快捷键不可用：unknown"
+			 * even though nothing was wrong with the combination.
+			 *
+			 * @returns a promise resolving to an error message, or null on success.
+			 */
+			const assign = useCallback(async (binding) => {
+				if (shortcuts === undefined) return t('settings.shortcut.unavailable');
+				try {
+					// The host exposes the collision report for a candidate without applying
+					// it; naming the colliding commands is what makes the failure readable.
+					const described = shortcuts.describeBinding?.(binding);
+					if (described?.issue !== null && described?.issue !== undefined) {
+						return t('settings.shortcut.rejected', { reason: described.issue });
+					}
+					const conflicts = (described?.conflicts ?? [])
+						.filter((id) => id !== SHORTCUT_ID)
+						.map((id) => {
+							const snapshot = shortcuts.catalog?.getSnapshot?.() ?? [];
+							const row = Array.isArray(snapshot) ? snapshot.find((entry) => entry.id === id) : undefined;
+							const label = typeof row?.label === 'function' ? row.label() : row?.label;
+							return label ?? id;
+						});
+					if (conflicts.length > 0) {
+						// Refuse before writing: the previous binding stays in force.
+						return t('settings.shortcut.conflict', { commands: conflicts.join('、') });
+					}
+					const result = await applyEdit({ type: 'set', id: SHORTCUT_ID, binding });
+					if (result !== undefined && result?.status !== 'saved') {
+						return t('settings.shortcut.rejected', { reason: result?.status ?? 'no-status' });
+					}
+					return null;
+				} catch (error) {
+					return t('settings.shortcut.rejected', { reason: error?.message ?? 'exception' });
+				}
+			}, [applyEdit, shortcuts, t]);
+
+			/**
+			 * Restore the shipped default.
+			 *
+			 * Same async contract as {@link assign}: the host resolves the outcome.
+			 *
+			 * @returns a promise resolving to an error message, or null on success.
+			 */
+			const reset = useCallback(async () => {
+				if (shortcuts === undefined) return t('settings.shortcut.unavailable');
+				try {
+					const result = await applyEdit({ type: 'reset', id: SHORTCUT_ID });
+					if (result !== undefined && result?.status !== 'saved') {
+						return t('settings.shortcut.rejected', { reason: result?.status ?? 'no-status' });
+					}
+					return null;
+				} catch (error) {
+					return t('settings.shortcut.rejected', { reason: error?.message ?? 'exception' });
+				}
+			}, [applyEdit, shortcuts, t]);
+
+			return { keys: state.keys, isDefault: state.isDefault, assign, reset, refresh };
+		}
+
 		/**
 		 * The plugin's settings page, registered into the Settings sidebar.
 		 *
@@ -800,11 +1315,14 @@ window.__ModuleLoader__.load({
 		 * @param props.t - localized translator.
 		 * @param props.getRemote - thunk returning the injected `remote.session` face.
 		 */
-		function SettingsSection({ t, getRemote }) {
+		function SettingsSection({ t, getRemote, shortcuts }) {
 			const [values, setValues] = useState(null);
 			// `{ version, url }` reported by the Host from the package manifest. Never
 			// hard-coded here: a release only bumps package.json.
 			const [about, setAbout] = useState(null);
+			// Keyboard-recording state for the shortcut row.
+			const [recording, setRecording] = useState(false);
+			const [shortcutError, setShortcutError] = useState(null);
 			const [catalog, setCatalog] = useState({ status: 'loading', groups: [] });
 			const [error, setError] = useState(null);
 			const [saving, setSaving] = useState(false);
@@ -909,6 +1427,17 @@ window.__ModuleLoader__.load({
 				[t],
 			);
 
+			// ---- keyboard binding -------------------------------------------------
+			// The host owns the binding: it stores the override, detects collisions and
+			// reports them. This row reads what the host resolved and asks the host to
+			// change it.
+			//
+			// This hook MUST run before the `values === null` early return below. Calling
+			// it after that return meant the loading render used fewer hooks than the
+			// loaded render, which React rejects with "Rendered more hooks than during the
+			// previous render" — and the settings page went completely blank.
+			const shortcut = useShortcutBinding(shortcuts, t);
+
 			if (values === null) {
 				return h(
 					'div',
@@ -919,11 +1448,55 @@ window.__ModuleLoader__.load({
 				);
 			}
 
+			// ---- keyboard binding (state and handlers) ----------------------------
+
+			/** Turn a keyboard event into the binding shape the host expects. */
+			const bindingFromEvent = (event) => {
+				const modifiers = [];
+				if (event.ctrlKey || event.metaKey) modifiers.push('primary');
+				if (event.shiftKey) modifiers.push('shift');
+				if (event.altKey) modifiers.push('alt');
+				return { code: event.code, modifiers };
+			};
+
+			const onRecordKey = (event) => {
+				if (!recording) return;
+				// While recording, every key is ours: the composer and the browser must not
+				// act on it. Esc leaves without changing anything.
+				event.preventDefault();
+				event.stopPropagation();
+				if (event.code === 'Escape') {
+					setRecording(false);
+					return;
+				}
+				const binding = bindingFromEvent(event);
+				// A lone modifier is not a combination; ignore it rather than binding
+				// "Shift" on its own.
+				if (/^(Shift|Control|Alt|Meta|OS)(Left|Right)?$/u.test(binding.code)) return;
+				setRecording(false);
+				// `assign` resolves once the host has accepted or refused the write.
+				shortcut.assign(binding).then(setShortcutError, () => setShortcutError(t('settings.shortcut.rejected', { reason: 'exception' })));
+			};
+
+			const toggleRecording = () => {
+				setShortcutError(null);
+				setRecording((previous) => !previous);
+			};
+
+			const resetShortcut = () => {
+				shortcut.reset().then(setShortcutError, () => setShortcutError(t('settings.shortcut.rejected', { reason: 'exception' })));
+			};
+
+			const shortcutKeys = shortcut.keys;
+			const shortcutIsDefault = shortcut.isDefault;
+			const shortcutHint = shortcutError !== null
+				? shortcutError
+				: (recording ? t('settings.shortcut.recordHint') : t('settings.shortcut.hint'));
+
 			const row = (id, title, hint, control) =>
 				h(
 					'div',
-					{ className: 'dsh-pe-settingsRow', 'data-row': id },
-					h('div', { className: 'dsh-pe-settingsCopy' }, h('div', { className: 'dsh-pe-settingsTitle' }, title), h('p', { className: 'dsh-pe-settingsHint' }, hint)),
+					{ className: 'dsh-pe-settingsRow', 'data-row': id },				h('div', { className: 'dsh-pe-settingsCopy' }, h('div', { className: 'dsh-pe-settingsTitle' }, title), h('p', { className: 'dsh-pe-settingsHint' }, hint)),
 					h('div', { className: 'dsh-pe-settingsControl' }, control),
 				);
 
@@ -1032,6 +1605,34 @@ window.__ModuleLoader__.load({
 					toggle('settings.images', values.referenceImages, (next) => save({ referenceImages: next }, 'settings.images')),
 				),
 
+				row(
+					'shortcut',
+					t('settings.shortcut.title'),
+					values.shortcutEnabled ? shortcutHint : t('settings.shortcut.offHint'),
+					h('div', { className: 'dsh-pe-shortcut' },
+						// The switch gates the whole feature. Recording is disabled while it is
+						// off so the row cannot look editable when nothing is bound.
+						toggle('settings.shortcutEnabled', values.shortcutEnabled, (next) => save({ shortcutEnabled: next }, 'settings.shortcutEnabled')),
+						h('button', {
+							type: 'button',
+							className: 'dsh-pe-binding',
+							'data-recording': recording ? 'true' : 'false',
+							disabled: !values.shortcutEnabled,
+							'aria-label': t('settings.shortcut.title'),
+							title: t('settings.shortcut.recordHint'),
+							onClick: toggleRecording,
+							onKeyDown: onRecordKey,
+						}, recording ? t('settings.shortcut.recording') : shortcutKeys),
+						h('button', {
+							type: 'button',
+							className: 'dsh-pe-reset',
+							disabled: !values.shortcutEnabled || shortcutIsDefault,
+							title: t('settings.shortcut.reset'),
+							onClick: resetShortcut,
+						}, t('settings.shortcut.resetShort')),
+					),
+				),
+
 				error !== null && h('p', { className: 'dsh-pe-settingsError', role: 'alert' }, error),
 			);
 		}
@@ -1112,7 +1713,11 @@ window.__ModuleLoader__.load({
 			// (slots, locale, remote, remote.session, ...). Without `remote.session`
 			// the ctx proxy throws when the section reads it, which is what produced
 			// "读取模型列表失败" in the picker.
-			inject: ['slots', 'locale', 'remote', 'remote.session'],
+			// `shortcuts` is the host service that owns command registration, conflict
+			// detection and the user's binding overrides. Registering through it — instead
+			// of adding our own keydown listener — is what makes a custom binding persist
+			// across restarts and collide visibly with a host command.
+			inject: ['slots', 'locale', 'remote', 'remote.session', 'shortcuts'],
 			apply(ctx) {
 				ctx.effect(installStyles, 'dsh-prompt-rewriter: styles');
 				ctx.effect(
@@ -1123,6 +1728,7 @@ window.__ModuleLoader__.load({
 								'label.busy': '正在用当前模型增强提示词，点击可停止',
 								'label.undo': '回退到增强前的提示词（也可以按 Ctrl+Z）',
 								'label.contextAware': '{base}（已参考本会话上下文）',
+								'shortcut.run': '增强提示词',
 								'state.refused': '输入框没有接受替换，草稿保持不变。',
 								'state.failed': '增强失败，草稿保持不变。',
 								'state.failedWith': '增强失败：{reason}。点击可重试。',
@@ -1151,12 +1757,25 @@ window.__ModuleLoader__.load({
 								'settings.images.title': '参考输入框里的图片',
 								'settings.images.on': '开启：输入框里的图片一并参考（历史图片始终不读）。会多耗 token。',
 								'settings.images.off': '关闭：只处理文字。',
+								'settings.shortcut.title': '快捷键',
+								'settings.shortcut.hint': '按一次增强，再按一次暂停。',
+								'settings.shortcut.offHint': '已关闭，开启后可用键盘触发。',
+								'settings.shortcut.recordHint': '按下组合键，Esc 取消。',
+								'settings.shortcut.recording': '按下快捷键…',
+								'settings.shortcut.reset': '恢复默认快捷键',
+								'settings.shortcut.resetShort': '恢复默认',
+								'settings.shortcut.unbound': '未设置',
+								'settings.shortcut.conflict': '与「{commands}」冲突，未生效。',
+								'settings.shortcut.rejected': '快捷键不可用：{reason}',
+								'settings.shortcut.unavailable': '当前环境不支持自定义快捷键。',
+
 							},
 							en: {
 								'label.idle': 'Rewrite the draft into a clearer, more complete prompt with the current model',
 								'label.busy': 'Enhancing the draft with the current model; click to stop',
 								'label.undo': 'Restore the prompt from before enhancement (Ctrl+Z also works)',
 								'label.contextAware': '{base} (used this session\'s context)',
+								'shortcut.run': 'Enhance prompt',
 								'state.refused': 'The composer refused the replacement; the draft is unchanged.',
 								'state.failed': 'Enhancement failed; the draft is unchanged.',
 								'state.failedWith': 'Enhancement failed: {reason}. Click to retry.',
@@ -1183,10 +1802,25 @@ window.__ModuleLoader__.load({
 								'settings.images.title': 'Use images in the composer',
 								'settings.images.on': 'On: images already attached to your draft are included. Earlier images never are. Costs more tokens.',
 								'settings.images.off': 'Off: text only.',
+								'settings.shortcut.title': 'Shortcut',
+								'settings.shortcut.hint': 'Press once to enhance, again to pause.',
+								'settings.shortcut.offHint': 'Off. Turn on to use the keyboard.',
+								'settings.shortcut.recordHint': 'Press a combination, Esc to cancel.',
+								'settings.shortcut.recording': 'Press keys…',
+								'settings.shortcut.reset': 'Restore the default shortcut',
+								'settings.shortcut.resetShort': 'Reset',
+								'settings.shortcut.unbound': 'Not set',
+								'settings.shortcut.conflict': 'Conflicts with "{commands}", not applied.',
+								'settings.shortcut.rejected': 'Shortcut unavailable: {reason}',
+								'settings.shortcut.unavailable': 'This environment does not support custom shortcuts.',
+
 							},
 						}),
 					'dsh-prompt-rewriter: dictionaries',
 				);
+				// `ctx.get` is a plain lookup, so a missing service cannot block activation.
+				try { sessionService = ctx.get('sessions'); } catch { sessionService = undefined; }
+				conversationResolver = () => resolveConversation(ctx);
 				ctx.slots.inject('conversation.input.right', () =>
 					ctx.slots.register({ name: 'conversation.input.right', id: 'prompt-enhance', order: -100, locale: NS }, EnhanceControl),
 				);
@@ -1201,7 +1835,7 @@ window.__ModuleLoader__.load({
 				// The registered component is the section itself, bound to this context.
 				// Keeping ONE stable component identity (no per-render wrapper) means the
 				// owner mounts a stable type and the section owns its own hook slots.
-				const Section = (props) => h(SettingsSection, { ...props, t, getRemote: getSessionRemote });
+				const Section = (props) => h(SettingsSection, { ...props, t, getRemote: getSessionRemote, shortcuts: ctx.shortcuts });
 				ctx.slots.inject('settings.section', () =>
 					ctx.slots.register(
 						{ name: 'settings.section', id: 'prompt-enhance', order: 50, label: () => t('nav'), locale: NS },
@@ -1215,6 +1849,208 @@ window.__ModuleLoader__.load({
 				// host node's structure, only one attribute on one button, and the mark
 				// disappears with the plugin.
 				ctx.effect(() => installNavMark(t('nav')), 'dsh-prompt-rewriter: settings nav mark');
+
+				// The keyboard command.
+				//
+				// Registered through the host so that: the default works immediately, the
+				// user's override persists in the profile, and a clashing combination is
+				// rejected by the host with a message naming the command it collides with.
+				//
+				// Default: Mod+Shift+Alt+Enter. The host's validator rejects several shapes
+				// that look natural here, and getting this wrong made registration THROW —
+				// which `ctx.effect` swallows, leaving a shortcut that silently never fires:
+				//   - `Enter` without Alt is reserved (it is the submit chord),
+				//   - the Web runtime only accepts three-modifier combinations or one of
+				//     three specific punctuation chords,
+				// so the combination must carry three modifiers AND include Alt.
+				// Ctrl+Shift+Alt+Enter satisfies both and is unused by the host.
+				ctx.effect(() => {
+					try {
+						// One implementation, reached from two places: `resolve` is what dispatch
+						// invokes, `run` is kept for any caller that uses the command object directly.
+						const runCommand = () => {
+							// The switch gates the command, and it defaults to off, so a global key
+							// never fires for someone who did not ask for it. The mounted composer
+							// publishes the current preference into the registry, so this stays
+							// correct after the user flips the switch.
+							if (taskStore.shortcutEnabled() !== true) {
+									return;
+							}
+							const trigger = taskStore.activeTrigger();
+							// No mounted composer means no draft to rewrite; staying quiet is better
+							// than reporting a failure for a key pressed elsewhere.
+							if (trigger !== undefined) {
+								taskStore.markHostFire();
+								trigger();
+							}
+						};
+						const dispose = ctx.shortcuts.register({
+							id: 'prompt-enhance.run',
+							label: () => t('shortcut.run'),
+							aliases: ['prompt enhance', 'enhance prompt', 'rewrite prompt'],
+							defaults: {
+								// Default: Ctrl+E on desktop, Ctrl+Alt+E in the browser.
+								//
+								// The chord is chosen from measured behaviour, not taste. Across 49 recorded
+								// presses in the live app:
+								//   Ctrl+<letter>        -> always arrived (KeyC, KeyZ, KeyV ...)
+								//   Ctrl+Shift+<any>     -> never arrived once (the IME consumes the pair)
+								//   Ctrl+Alt+<letter>    -> unverified
+								// So the desktop shell — the environment actually in use — takes the one
+								// shape that is proven to arrive: a single primary modifier plus a letter.
+								//
+								// The browser half cannot use a bare Ctrl+<letter>: the web validator
+								// only accepts one-modifier chords for three punctuation keys, so it gets
+								// primary+alt instead (accepted shape, and still Shift-free).
+								//
+								// E for Enhance. Ctrl+Z stays free for undo.
+								'desktop:windows': { code: 'KeyE', modifiers: ['primary'] },
+								'desktop:macos': { code: 'KeyE', modifiers: ['primary'] },
+								'web:windows': { code: 'KeyE', modifiers: ['primary', 'alt'] },
+								'web:macos': { code: 'KeyE', modifiers: ['primary', 'alt'] },
+							},
+							// `dispatch` invokes `command.resolve(context)`; it NEVER calls `run`. A
+							// command registered without `resolve` therefore throws inside dispatch,
+							// and the desktop keyboard bridge has already called preventDefault by
+							// then — the key is swallowed with no event and no visible error. That is
+							// exactly the silent no-op this plugin kept hitting: the catalog looked
+							// ready (`matched:true`, `stop:null`) because it was, while the dispatch
+							// path died one line later.
+							//
+							// `regions` and `modals` are consulted on the web runtime; omitting them
+							// throws there for the same reason.
+							resolve: () => ({ status: 'handled', run: runCommand }),
+							run: runCommand,
+							regions: ['page', 'editable', 'terminal'],
+							modals: [],
+						});
+						return dispose;
+					} catch (error) {
+						// Record the failure instead of letting `ctx.effect` swallow it; the
+						// console then explains why the key does nothing.
+						return undefined;
+					}
+				}, 'dsh-prompt-rewriter: shortcut');
+
+				// Keyboard fallback.
+				//
+				// The host owns the binding (display, persistence, conflict reporting), but
+				// whether its binding index actually dispatches depends on the runtime: the
+				// desktop shell resolves shortcuts through a native keyboard bridge, and a
+				// plugin command registered only on the JS side can end up with a catalog row
+				// that renders fine yet never fires. Rather than guess which shell is in play,
+				// the plugin watches the key itself and runs the SAME trigger the host command
+				// runs. Double-fire is prevented three ways: the host marks `markHostFire`
+				// before running, a handled event arrives with `defaultPrevented`, and the
+				// listener is registered in the bubble phase so the host sees it first.
+				ctx.effect(() => {
+					if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+						return undefined;
+					}
+
+					/** The binding the host currently resolves for our command, if any. */
+					const resolvedBinding = () => {
+						try {
+							const snapshot = ctx.shortcuts?.catalog?.getSnapshot?.() ?? [];
+							const row = Array.isArray(snapshot)
+								? snapshot.find((entry) => entry.id === 'prompt-enhance.run')
+								: undefined;
+							return row?.binding ?? undefined;
+						} catch {
+							return undefined;
+						}
+					};
+
+					/**
+					 * The physical code of a key event, with a fallback for IME-driven ones.
+					 *
+					 * Live diagnostics showed a Chinese IME can deliver a keydown whose `code`
+					 * is empty for keys it intercepts. A letter key still reports `key`, so the
+					 * printable character is used to reconstruct the code in that case.
+					 */
+					const codeOf = (event) => {
+						if (typeof event.code === 'string' && event.code.length > 0) return event.code;
+						const key = typeof event.key === 'string' ? event.key : '';
+						if (/^[a-zA-Z]$/u.test(key)) return `Key${key.toUpperCase()}`;
+						if (/^[0-9]$/u.test(key)) return `Digit${key}`;
+						return event.code;
+					};
+
+					/** Turn a DOM event into the host's normalized binding shape. */
+					const fromEvent = (event) => {
+						const modifiers = [];
+						if (event.ctrlKey || event.metaKey) modifiers.push('primary');
+						if (event.altKey) modifiers.push('alt');
+						if (event.shiftKey) modifiers.push('shift');
+						return { code: codeOf(event), modifiers };
+					};
+
+					/** Compare two bindings by physical code plus modifier set. */
+					const same = (left, right) => {
+						if (left === undefined || right === undefined) return false;
+						if (left.code !== right.code) return false;
+						const norm = (list) => [...new Set(list)].sort().join(',');
+						return norm(left.modifiers ?? []) === norm(right.modifiers ?? []);
+					};
+
+					/**
+					 * Walk the whole guard chain and report which link decided.
+					 *
+					 * Kept separate from `onKey` so the periodic probe can evaluate the same
+					 * chain without ever triggering an enhancement.
+					 */
+					const evaluate = (event) => {
+						const base = {
+							code: codeOf(event),
+							key: typeof event.key === 'string' ? event.key : '',
+							ctrl: event.ctrlKey === true,
+							shift: event.shiftKey === true,
+							alt: event.altKey === true,
+							prevented: event.defaultPrevented === true,
+						};
+						if (event.defaultPrevented) return { ...base, stop: 'prevented' };
+						if (taskStore.shortcutEnabled() !== true) return { ...base, stop: 'gate' };
+						if (taskStore.hostFiredRecently()) return { ...base, stop: 'host-recent' };
+						if (/^(Shift|Control|Alt|Meta|OS)(Left|Right)?$/u.test(codeOf(event))) return { ...base, stop: 'modifier-only' };
+
+						const target = resolvedBinding();
+						if (target === undefined) return { ...base, stop: 'no-target', target: null };
+
+						let candidate = fromEvent(event);
+						try {
+							const described = ctx.shortcuts?.describeBinding?.(candidate);
+							if (described?.binding !== undefined && described?.binding !== null) candidate = described.binding;
+						} catch {
+							// Keep the symbolic form; `same` compares modifier sets.
+						}
+						const matched = same(candidate, target);
+						const hasTrigger = taskStore.activeTrigger() !== undefined;
+						return {
+							...base,
+							target,
+							candidate,
+							matched,
+							hasTrigger,
+							stop: matched ? (hasTrigger ? null : 'no-trigger') : 'mismatch',
+						};
+					};
+
+					const onKey = (event) => {
+						const verdict = evaluate(event);
+						// Only interesting keys are reported: a modifier-free press is ordinary
+						// typing and would drown the log.
+						if (verdict.stop !== null) return;
+						event.preventDefault();
+						taskStore.activeTrigger()();
+					};
+
+					window.addEventListener('keydown', onKey);
+
+
+					return () => {
+						window.removeEventListener('keydown', onKey);
+					};
+				}, 'dsh-prompt-rewriter: shortcut fallback');
 			},
 		};
 	},
