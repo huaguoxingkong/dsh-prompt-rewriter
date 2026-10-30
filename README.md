@@ -101,25 +101,28 @@ Only images **currently sitting in the composer** — **never images from earlie
 
 ## Install
 
-DeepSeek Harness desktop, `node >= 22`. **Restart Harness after installing** — this plugin has no HMR.
+DeepSeek Harness, `node >= 22`. **Restart Harness after installing** — this plugin has no HMR.
 
 ### From npm (recommended)
 
 ```sh
-dsh plugin --profile desktop add dsh-prompt-rewriter
+dsh plugin --profile web add dsh-prompt-rewriter      # web build
+dsh plugin --profile desktop add dsh-prompt-rewriter  # desktop app
 ```
+
+Use the profile you actually run. The plugin is a web-platform client plugin, so it works in either.
 
 ### From GitHub source
 
 ```sh
-dsh plugin --profile desktop add github:huaguoxingkong/dsh-prompt-rewriter
+dsh plugin --profile web add github:huaguoxingkong/dsh-prompt-rewriter
 ```
 
 Installing from source runs a build step and may ask you to approve it. Grant that only to packages you trust.
 
 ### From a release zip
 
-Download the zip from [Releases](https://github.com/huaguoxingkong/dsh-prompt-rewriter/releases), unzip, then `npm install && dsh plugin --profile desktop add .`.
+Download the zip from [Releases](https://github.com/huaguoxingkong/dsh-prompt-rewriter/releases), unzip, then `npm install && dsh plugin --profile web add .`.
 
 ## FAQ
 
