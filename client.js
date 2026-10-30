@@ -1925,9 +1925,9 @@ window.__ModuleLoader__.load({
 							modals: [],
 						});
 						return dispose;
-					} catch (error) {
-						// Record the failure instead of letting `ctx.effect` swallow it; the
-						// console then explains why the key does nothing.
+					} catch {
+						// A throw here is swallowed by the effect wrapper; the keydown fallback
+						// below still serves the shortcut, so it must not fail activation.
 						return undefined;
 					}
 				}, 'dsh-prompt-rewriter: shortcut');
@@ -1994,10 +1994,9 @@ window.__ModuleLoader__.load({
 					};
 
 					/**
-					 * Walk the whole guard chain and report which link decided.
+					 * Does this keyboard event match a binding this plugin owns?
 					 *
-					 * Kept separate from `onKey` so the periodic probe can evaluate the same
-					 * chain without ever triggering an enhancement.
+					 * Kept separate from `onKey` so the pure judgement is testable on its own.
 					 */
 					const evaluate = (event) => {
 						const base = {
