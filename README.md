@@ -43,7 +43,7 @@ An enhancement is a real model call, and **how fast the result comes back depend
 
 If it feels slow, switch the session to a model that is more stable and responds faster — the same draft can take a few seconds on one model and well over ten on another. The button does not favour any particular model; it uses whichever one you picked.
 
-> Want a fixed model just for enhancement, without affecting normal chat? Open `Settings → Prompt rewriter` and turn on **Use a fixed model**.
+> Want a fixed model just for enhancement, without affecting normal chat? Open `Settings → Prompt Enhance` and turn on **Use a fixed model**.
 
 ### You can navigate away mid-rewrite
 
@@ -55,7 +55,7 @@ That wasn't true in 1.0.x: switching sessions aborted the task, and coming back 
 
 ### Keyboard shortcut (off by default)
 
-Turn it on at **Settings → Prompt rewriter → Shortcut**. Desktop uses `Ctrl+E` (`Cmd+E` on macOS); the browser uses `Ctrl+Alt+E` (`Cmd+Alt+E`).
+Turn it on at **Settings → Prompt Enhance → Shortcut**. Desktop uses `Ctrl+E` (`Cmd+E` on macOS); the browser uses `Ctrl+Alt+E` (`Cmd+Alt+E`).
 
 - Press once to enhance; press again while it runs to pause. It acts on the composer of the current conversation.
 - **Same as clicking the icon** — the shortcut runs the icon's own click handler, including its undo state, so the two paths cannot drift. Restoring a draft stays on the button or `Ctrl+Z`.
@@ -95,7 +95,7 @@ Only images **currently sitting in the composer** — **never images from earlie
 
 ## Settings
 
-`Settings → Prompt rewriter`. Three switches and one dropdown, affecting **only this button, never normal sending**.
+`Settings → Prompt Enhance`. Four switches and one dropdown, affecting **only this button, never normal sending**.
 
 ![Settings page](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/03-settings-en.png)
 
@@ -104,6 +104,7 @@ Only images **currently sitting in the composer** — **never images from earlie
 | Use a fixed model | Off | Off: follow the model of the current conversation. On: always use the model picked below. |
 | Reference the conversation | **On** | Read earlier turns. More accurate, but extra tokens and slower on long chats. |
 | Reference composer images | Off | Images in the composer take part. Earlier messages' images are never read. |
+| Shortcut | Off | Lets the keyboard trigger a rewrite. Off by default, so no global key fires unasked. |
 
 - The model dropdown lists **the providers and models you actually have** — you can't type in one that doesn't exist.
 - Turning the model switch off does not clear your selection; flipping it back on shows the same choice.
@@ -137,7 +138,7 @@ Download the zip from [Releases](https://github.com/huaguoxingkong/dsh-prompt-re
 
 ## FAQ
 
-**Clicked it and nothing happened.** The composer is empty, or *Use a fixed model* is on with no model picked.
+**Clicked it and nothing happened.** The composer is empty, or *Use a fixed model* is on with no model picked. If you used the shortcut instead, check that the Shortcut switch is on and that no conflict is reported.
 
 **"No credentials configured for the current model."** That model has no key set. Switch models, or pin one that works in settings.
 
@@ -147,7 +148,7 @@ Download the zip from [Releases](https://github.com/huaguoxingkong/dsh-prompt-re
 
 ## Configuration
 
-Every `config` key on the profile plugin line is optional. The first five are managed by the settings page; the last seven are operational ceilings and are not exposed in the UI.
+Every `config` key on the profile plugin line is optional. The first six are managed by the settings page; the last seven are operational ceilings and are not exposed in the UI.
 
 ```yaml
 - id: dsh-prompt-rewriter
@@ -159,6 +160,7 @@ Every `config` key on the profile plugin line is optional. The first five are ma
     enhanceModel: ""
     referenceImages: false     # read composer images
     referenceContext: true     # read earlier turns
+    shortcutEnabled: false     # keyboard shortcut (off by default)
 
     # operational ceilings (not exposed in the UI)
     maxDraftChars: 8000        # draft length cap
