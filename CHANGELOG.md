@@ -2,6 +2,17 @@
 
 记录每个**已发布**版本对使用者可见的变化。中英双语并列，中文在前。
 
+## 1.6.2
+
+**中文**
+
+- 增强进行中的鱼尾动效改用品牌蓝。此前它跟随按钮的文字色，深色主题下接近白色，与旁边的鱼形图标不同色。
+- 输入框里的图片读取更可靠：宿主服务取不到时改从输入框自身的通道取图；两处都无法回答时不再静默跳过，文字改写照常完成，状态区会告诉你少读了几张。
+
+**English**
+
+- The tail animation shown while an enhancement runs now uses the brand blue. It previously followed the button's text colour, which is near white in the dark theme and did not match the fish icon beside it.
+- Composer images are read more reliably: when the host service cannot answer, the composer's own channel is used instead; when neither can, the images are no longer skipped silently — the text-only rewrite still completes and the status area reports how many were missed.
 ## 1.6.0
 
 **中文**
