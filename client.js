@@ -75,7 +75,7 @@ window.__ModuleLoader__.load({
 			// Colour: the official brand blue, not `currentColor`. The tail is a graphic,
 			// not text, so inheriting the button's label colour made it render white on
 			// the dark composer — visually detached from the fish mark it replaces.
-			'.dsh-pe_twist{display:block;width:20px;height:16px;overflow:visible;color:inherit}',
+			'.dsh-pe_twist{display:block;width:20px;height:16px;overflow:visible;color:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6)}',
 			'.dsh-pe_twist path{fill:currentColor;fill-rule:evenodd}',
 			'.dsh-pe_icon{display:block;width:15px;height:15px}',
 			// Context-mode mark: a dot on the seat that reports an EXPECTATION — "if you
@@ -708,10 +708,6 @@ window.__ModuleLoader__.load({
 			// feature is opt-in, so a global key never fires on a user who did not ask for
 			// it. Read from the same settings response as the other switches.
 			const [shortcutOn, setShortcutOn] = useState(false);
-			// Exposed on the seat as data-ctx-debug so a missing dot can be diagnosed
-			// without guessing: it records which of the two facts was false, and whether
-			// either request failed. Not shown to users; harmless in the DOM.
-			const [ctxProbe, setCtxProbe] = useState('pending');
 			useEffect(() => {
 				let cancelled = false;
 				const read = async () => {
@@ -730,16 +726,11 @@ window.__ModuleLoader__.load({
 						const allowed = settings?.ok === true && settings.values?.shortcutEnabled === true;
 						setShortcutOn(allowed);
 						taskStore.setShortcutEnabled(allowed);
-							setCtxProbe(
-							`sw=${switchOn ? 1 : 0},hc=${hasContext ? 1 : 0},`
-							+ `sHttp=${settingsResponse.status},cHttp=${statusResponse.status}`,
-						);
 					} catch (error) {
 						// An unreachable route means "we cannot promise context"; showing no dot
 						// is the honest default rather than promising a context-aware run.
 						if (!cancelled) {
 							setWillUseContext(false);
-							setCtxProbe(`error:${error?.message ?? 'unknown'}`);
 						}
 					}
 				};
@@ -819,19 +810,52 @@ window.__ModuleLoader__.load({
 		 * @param signal - cancellation.
 		 * @returns `{ images, skipped }`.
 		 */
-		async function readComposerImages(conversation, ids, signal) {
+		/**
+		 * Resolve the composer draft descriptors for these ids.
+		 *
+		 * Two owners can answer, and which one is reachable depends on the shell:
+		 *
+		 * 1. the `conversation` client service, which owns the draft map;
+		 * 2. the composer action face handed to the slot, which exposes the same
+		 *    lookup when the host chooses to publish it there.
+		 *
+		 * Trying both removes the single point of failure that made every image come
+		 * back unreadable when the first owner was absent.
+		 *
+		 * @param inputActions - the composer action face from slot props.
+		 * @param ids - draft attachment ids.
+		 * @returns `{ descriptors, source }` where source is the owner that answered.
+		 */
+		function resolveDraftDescriptors(inputActions, ids) {
+			const conversation = conversationResolver();
+			if (conversation !== undefined && typeof conversation.resolveDraftAttachments === 'function') {
+				try {
+					return { descriptors: conversation.resolveDraftAttachments(ids) ?? [], source: 'service' };
+				} catch {
+					// Fall through to the action face.
+				}
+			}
+			if (inputActions !== undefined && typeof inputActions.resolveDraftAttachments === 'function') {
+				try {
+					return { descriptors: inputActions.resolveDraftAttachments(ids) ?? [], source: 'actions' };
+				} catch {
+					// Neither owner could answer.
+				}
+			}
+			return { descriptors: [], source: 'none' };
+		}
+
+		/**
+		 * Turn resolved draft descriptors into request images.
+		 *
+		 * @param descriptors - draft descriptors carrying the original browser `File`.
+		 * @param signal - cancellation.
+		 * @returns `{ images, skipped }`.
+		 */
+		async function readComposerImages(descriptors, signal) {
 			const images = [];
 			let skipped = 0;
-			if (!Array.isArray(ids) || ids.length === 0) return { images, skipped };
-			if (conversation === undefined || typeof conversation.resolveDraftAttachments !== 'function') {
-				return { images, skipped: ids.length };
-			}
-			let descriptors;
-			try {
-				descriptors = conversation.resolveDraftAttachments(ids) ?? [];
-			} catch {
-				return { images, skipped: ids.length };
-			}
+			if (!Array.isArray(descriptors) || descriptors.length === 0) return { images, skipped };
 			for (const descriptor of descriptors.slice(0, 4)) {
 				if (signal.aborted) return { images, skipped };
 				if (descriptor?.kind !== 'image') continue;
@@ -900,10 +924,17 @@ window.__ModuleLoader__.load({
 						// race entirely and keeps one authority for the switch.
 						// Resolved here, not at activation: the service mounts with the
 						// conversation plugin, which can come up after this plugin.
-						const conversation = attachmentIds.length > 0 ? conversationResolver() : undefined;
+						const drafts = attachmentIds.length > 0
+							? resolveDraftDescriptors(inputActions, attachmentIds)
+							: { descriptors: [], source: 'none' };
 						const collected = attachmentIds.length > 0
-							? await readComposerImages(conversation, attachmentIds, controller.signal)
+							? await readComposerImages(drafts.descriptors, controller.signal)
 							: { images: [], skipped: 0 };
+						if (attachmentIds.length > 0 && drafts.source === 'none') {
+							// Nothing could read the attachments. Report it through the same notice
+							// the Host uses for a skipped image, instead of dropping them silently.
+							collected.skipped = attachmentIds.length;
+						}
 							if (controller.signal.aborted) return;
 						const response = await fetch('/api/prompt-enhance', {
 							method: 'POST',
@@ -1112,7 +1143,6 @@ window.__ModuleLoader__.load({
 					className: 'dsh-pe_root',
 					'data-prompt-enhance': '1',
 					'data-context': showContextMark ? 'true' : 'false',
-					'data-ctx-debug': ctxProbe,
 					'data-notice': failure !== null ? 'true' : 'false',
 				},
 				h(
@@ -1371,7 +1401,6 @@ window.__ModuleLoader__.load({
 						// Keep the reason: an empty picker with no explanation is
 						// indistinguishable from a slow load, and the message is shown to the
 						// user instead of being swallowed.
-						if (typeof console !== 'undefined') console.warn('[dsh-prompt-rewriter] model catalog failed:', failure?.message ?? failure);
 						setCatalog({ status: 'error', groups: [] });
 					}
 				})();
