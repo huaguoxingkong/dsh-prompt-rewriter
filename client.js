@@ -460,6 +460,7 @@ window.__ModuleLoader__.load({
 		 */
 		let conversationResolver = () => undefined;
 
+
 		/**
 		 * Resolve the client `conversation` service AT CALL TIME.
 		 *
@@ -1189,6 +1190,61 @@ window.__ModuleLoader__.load({
 		const SHORTCUT_ID = 'prompt-enhance.run';
 
 		/**
+		 * Whether a value behaves like the host `shortcuts` service.
+		 *
+		 * The service is OPTIONAL: the host builds it only when the desktop keyboard
+		 * bridge exists, and a third-party shortcut plugin that pins the client runtime
+		 * to an older range can keep it from registering at all. Losing it must cost
+		 * only the shortcut settings row — never the composer button.
+		 *
+		 * @param candidate - value from `ctx.get('shortcuts')`.
+		 * @returns whether the face can be used.
+		 */
+		function usableShortcuts(candidate) {
+			if (candidate === undefined || candidate === null) return false;
+			if (typeof candidate !== 'object' && typeof candidate !== 'function') return false;
+			return typeof candidate.register === 'function';
+		}
+
+		/**
+		 * Read a snapshot from a face that may expose it as a method or as a plain value.
+		 *
+		 * Host builds differ here: one publishes `catalog` as an object with
+		 * `getSnapshot()`, another as the array itself. Both shapes are accepted, and
+		 * anything unexpected collapses to an empty list so callers stay simple.
+		 *
+		 * @param face - `shortcuts.catalog` or `shortcuts.config`.
+		 * @param key - array field to use when the value is a wrapper object.
+		 * @returns the snapshot array, or an empty array.
+		 */
+		function readSnapshot(face, key) {
+			if (face === undefined || face === null) return [];
+			try {
+				const raw = typeof face.getSnapshot === 'function' ? face.getSnapshot() : face;
+				if (Array.isArray(raw)) return raw;
+				if (Array.isArray(raw?.[key])) return raw[key];
+			} catch {
+				// A throwing getter means "not ready"; callers treat that as empty.
+			}
+			return [];
+		}
+
+		/**
+		 * Read the binding revision, tolerating both shapes and any throw.
+		 *
+		 * @param shortcuts - the service face.
+		 * @returns the revision, or undefined.
+		 */
+		function readRevision(shortcuts) {
+			try {
+				const config = shortcuts?.config;
+				const raw = typeof config?.getSnapshot === 'function' ? config.getSnapshot() : config;
+				return raw?.revision;
+			} catch {
+				return undefined;
+			}
+		}
+		/**
 		 * Read and edit this plugin's keyboard binding through the host shortcuts service.
 		 *
 		 * Everything authoritative lives in the host: it renders the resolved keys (so a
@@ -1200,7 +1256,11 @@ window.__ModuleLoader__.load({
 		 * @param t - localized translator, for host-reported failure states.
 		 * @returns `{ keys, isDefault, assign, reset, refresh }`.
 		 */
-		function useShortcutBinding(shortcuts, t) {
+		function useShortcutBinding(resolveShortcuts, t) {
+			// Resolved on every read, never captured: the host may register the service
+			// after this section mounts, and a value captured during render would stay
+			// undefined for the life of the component.
+			const shortcuts = typeof resolveShortcuts === 'function' ? resolveShortcuts() : resolveShortcuts;
 			const [state, setState] = useState({ keys: '', isDefault: true, revision: undefined });
 			const alive = useRef(false);
 			alive.current = true;
@@ -1209,10 +1269,11 @@ window.__ModuleLoader__.load({
 			const refresh = useCallback(() => {
 				if (shortcuts === undefined) return;
 				try {
-					const snapshot = shortcuts.catalog?.getSnapshot?.() ?? shortcuts.catalog ?? [];
-					const row = Array.isArray(snapshot) ? snapshot.find((entry) => entry.id === SHORTCUT_ID) : undefined;
-					const config = shortcuts.config?.getSnapshot?.() ?? shortcuts.config;
-					const revision = config?.revision;
+					const snapshot = readSnapshot(shortcuts?.catalog, 'commands');
+					const row = snapshot.find((entry) => entry?.id === SHORTCUT_ID);
+					const revision = readRevision(shortcuts);
+					// The command is not in the host catalog (yet, or at all). Leaving the row
+					// as it stands is correct: nothing is bound, so nothing can be shown.
 					if (row === undefined) return;
 					setState({
 						// `keys` is the host's own display form of the resolved binding.
@@ -1236,10 +1297,7 @@ window.__ModuleLoader__.load({
 			 * refuses it with `if (revision !== this.snapshot.revision) return result("stale")`.
 			 * That is why 恢复默认 did nothing and the old override kept showing.
 			 */
-			const revisionOf = useCallback(() => {
-				const config = shortcuts?.config?.getSnapshot?.() ?? shortcuts?.config;
-				return config?.revision;
-			}, [shortcuts]);
+			const revisionOf = useCallback(() => readRevision(shortcuts), [shortcuts]);
 
 			/**
 			 * Submit one edit against the live revision, retrying once on "stale".
@@ -1250,23 +1308,48 @@ window.__ModuleLoader__.load({
 			 * and then trying to reset it.
 			 */
 			const applyEdit = useCallback(async (operation) => {
-				if (shortcuts === undefined) return { status: 'unavailable' };
-				let result = await shortcuts.edit(operation, revisionOf());
-				if (result?.status === 'stale') {
-					refresh();
-					result = await shortcuts.edit(operation, revisionOf());
+				if (!usableShortcuts(shortcuts)) return { status: 'unavailable' };
+				if (typeof shortcuts.edit !== 'function') return { status: 'unavailable' };
+				try {
+					let result = await shortcuts.edit(operation, revisionOf());
+					if (result?.status === 'stale') {
+						refresh();
+						result = await shortcuts.edit(operation, revisionOf());
+					}
+					if (result?.status === 'saved') refresh();
+					return result;
+				} catch (error) {
+					// A throwing edit is a broken host, not a user mistake: report it as
+					// failed so the row shows a reason instead of crashing the page.
+					return { status: 'failed', reason: error?.message ?? 'exception' };
 				}
-				if (result?.status === 'saved') refresh();
-				return result;
 			}, [refresh, revisionOf, shortcuts]);
 
 			useEffect(() => {
 				refresh();
+				// The host may register the service a beat after this section mounts. A
+				// captured-at-render lookup would then leave the row permanently blank,
+				// which is exactly the empty box users saw. Re-reading a few times covers
+				// that window without polling forever.
+				let tries = 0;
+				const retry = setInterval(() => {
+					tries += 1;
+					refresh();
+					if (tries >= 10) clearInterval(retry);
+				}, 120);
 				// The host publishes catalog changes; following them keeps this row honest
 				// when a binding is changed from the general Settings page instead.
-				const unsubscribe = shortcuts?.catalog?.subscribe?.(refresh);
+				let unsubscribe;
+				try {
+					if (typeof shortcuts?.catalog?.subscribe === 'function') {
+						unsubscribe = shortcuts.catalog.subscribe(refresh);
+					}
+				} catch {
+					// No subscription means the row does not live-update; it still works.
+				}
 				return () => {
 					alive.current = false;
+					clearInterval(retry);
 					if (typeof unsubscribe === 'function') unsubscribe();
 				};
 			}, [refresh, shortcuts]);
@@ -1281,19 +1364,20 @@ window.__ModuleLoader__.load({
 			 * @returns a promise resolving to an error message, or null on success.
 			 */
 			const assign = useCallback(async (binding) => {
-				if (shortcuts === undefined) return t('settings.shortcut.unavailable');
+				if (!usableShortcuts(shortcuts)) return t('settings.shortcut.unavailable');
 				try {
 					// The host exposes the collision report for a candidate without applying
 					// it; naming the colliding commands is what makes the failure readable.
-					const described = shortcuts.describeBinding?.(binding);
+					const described = typeof shortcuts.describeBinding === 'function' ? shortcuts.describeBinding(binding) : undefined;
 					if (described?.issue !== null && described?.issue !== undefined) {
 						return t('settings.shortcut.rejected', { reason: described.issue });
 					}
 					const conflicts = (described?.conflicts ?? [])
 						.filter((id) => id !== SHORTCUT_ID)
 						.map((id) => {
-							const snapshot = shortcuts.catalog?.getSnapshot?.() ?? [];
-							const row = Array.isArray(snapshot) ? snapshot.find((entry) => entry.id === id) : undefined;
+							// A broken catalog only costs the friendly names in the message.
+							const snapshot = readSnapshot(shortcuts?.catalog, 'commands');
+							const row = snapshot.find((entry) => entry?.id === id);
 							const label = typeof row?.label === 'function' ? row.label() : row?.label;
 							return label ?? id;
 						});
@@ -1319,7 +1403,7 @@ window.__ModuleLoader__.load({
 			 * @returns a promise resolving to an error message, or null on success.
 			 */
 			const reset = useCallback(async () => {
-				if (shortcuts === undefined) return t('settings.shortcut.unavailable');
+				if (!usableShortcuts(shortcuts)) return t('settings.shortcut.unavailable');
 				try {
 					const result = await applyEdit({ type: 'reset', id: SHORTCUT_ID });
 					if (result !== undefined && result?.status !== 'saved') {
@@ -1345,7 +1429,7 @@ window.__ModuleLoader__.load({
 		 * @param props.t - localized translator.
 		 * @param props.getRemote - thunk returning the injected `remote.session` face.
 		 */
-		function SettingsSection({ t, getRemote, shortcuts }) {
+		function SettingsSection({ t, getRemote, getShortcuts }) {
 			const [values, setValues] = useState(null);
 			// `{ version, url }` reported by the Host from the package manifest. Never
 			// hard-coded here: a release only bumps package.json.
@@ -1465,7 +1549,9 @@ window.__ModuleLoader__.load({
 			// it after that return meant the loading render used fewer hooks than the
 			// loaded render, which React rejects with "Rendered more hooks than during the
 			// previous render" — and the settings page went completely blank.
-			const shortcut = useShortcutBinding(shortcuts, t);
+			// The hook resolves the face on every read: the host may register it after
+			// this section mounts, and it may never register it at all.
+			const shortcut = useShortcutBinding(getShortcuts, t);
 
 			if (values === null) {
 				return h(
@@ -1746,7 +1832,16 @@ window.__ModuleLoader__.load({
 			// detection and the user's binding overrides. Registering through it — instead
 			// of adding our own keydown listener — is what makes a custom binding persist
 			// across restarts and collide visibly with a host command.
-			inject: ['slots', 'locale', 'remote', 'remote.session', 'shortcuts'],
+			//
+			// It is deliberately NOT in this list. Cordis activates a plugin only when
+			// every injected service exists, so listing it made a missing keyboard
+			// bridge fatal: the whole plugin stayed dormant and the composer button
+			// vanished along with the shortcut row. The host builds that service
+			// conditionally (`window.dshDesktop.keyboard`), and a third-party shortcut
+			// plugin that pins the client runtime to an older range can keep it from
+			// ever registering. Resolving it through `ctx.get` at call time makes the
+			// keyboard binding optional while the rewrite itself stays unconditional.
+			inject: ['slots', 'locale', 'remote', 'remote.session'],
 			apply(ctx) {
 				ctx.effect(installStyles, 'dsh-prompt-rewriter: styles');
 				ctx.effect(
@@ -1864,7 +1959,12 @@ window.__ModuleLoader__.load({
 				// The registered component is the section itself, bound to this context.
 				// Keeping ONE stable component identity (no per-render wrapper) means the
 				// owner mounts a stable type and the section owns its own hook slots.
-				const Section = (props) => h(SettingsSection, { ...props, t, getRemote: getSessionRemote, shortcuts: ctx.shortcuts });
+								// Resolved through `ctx.get` instead of `ctx.shortcuts`: once `shortcuts`
+				// leaves the inject list the ctx proxy no longer exposes it as a property,
+				// describing then throws. A thunk also lets the section re-read the face
+				// after the host finishes mounting it.
+				const getShortcuts = () => (typeof ctx.get === 'function' ? ctx.get('shortcuts') : ctx.shortcuts);
+				const Section = (props) => h(SettingsSection, { ...props, t, getRemote: getSessionRemote, getShortcuts });
 				ctx.slots.inject('settings.section', () =>
 					ctx.slots.register(
 						{ name: 'settings.section', id: 'prompt-enhance', order: 50, label: () => t('nav'), locale: NS },
@@ -1893,7 +1993,17 @@ window.__ModuleLoader__.load({
 				//     three specific punctuation chords,
 				// so the combination must carry three modifiers AND include Alt.
 				// Ctrl+Shift+Alt+Enter satisfies both and is unused by the host.
-				ctx.effect(() => {
+				// Registration waits for the host shortcut service WITHOUT gating activation.
+				//
+				// `ctx.get(name)` does not bypass the inject gate: a service outside `inject`
+				// resolves to an Error object, so the previous guard tripped and the command
+				// was never registered (the host catalog listed its own commands, none ours).
+				// Every name in `inject` is REQUIRED for activation, so listing `shortcuts`
+				// there would keep the whole plugin dormant without a keyboard bridge.
+				// `ctx.inject([...], cb)` is the middle path: it waits for the service and
+				// leaves the plugin active either way.
+				ctx.inject(['shortcuts'], (scope) => {
+					scope.effect(() => {
 					try {
 						// One implementation, reached from two places: `resolve` is what dispatch
 						// invokes, `run` is kept for any caller that uses the command object directly.
@@ -1913,7 +2023,11 @@ window.__ModuleLoader__.load({
 								trigger();
 							}
 						};
-						const dispose = ctx.shortcuts.register({
+						// No service means no host-owned binding: the fallback listener below
+						// still runs the command, so the key keeps working where it can.
+						const shortcutsFace = scope.shortcuts;
+						if (typeof shortcutsFace?.register !== 'function') return undefined;
+						const dispose = shortcutsFace.register({
 							id: 'prompt-enhance.run',
 							label: () => t('shortcut.run'),
 							aliases: ['prompt enhance', 'enhance prompt', 'rewrite prompt'],
@@ -1954,12 +2068,13 @@ window.__ModuleLoader__.load({
 							modals: [],
 						});
 						return dispose;
-					} catch {
+					} catch (error) {
 						// A throw here is swallowed by the effect wrapper; the keydown fallback
 						// below still serves the shortcut, so it must not fail activation.
 						return undefined;
 					}
 				}, 'dsh-prompt-rewriter: shortcut');
+				});
 
 				// Keyboard fallback.
 				//
@@ -1980,7 +2095,10 @@ window.__ModuleLoader__.load({
 					/** The binding the host currently resolves for our command, if any. */
 					const resolvedBinding = () => {
 						try {
-							const snapshot = ctx.shortcuts?.catalog?.getSnapshot?.() ?? [];
+							// A missing service just means "no host binding to compare against";
+							// the fallback listener then relies on its own defaults.
+							const face = typeof ctx.get === 'function' ? ctx.get('shortcuts') : ctx.shortcuts;
+							const snapshot = readSnapshot(face?.catalog, 'commands');
 							const row = Array.isArray(snapshot)
 								? snapshot.find((entry) => entry.id === 'prompt-enhance.run')
 								: undefined;
@@ -2046,7 +2164,7 @@ window.__ModuleLoader__.load({
 
 						let candidate = fromEvent(event);
 						try {
-							const described = ctx.shortcuts?.describeBinding?.(candidate);
+							const described = typeof face?.describeBinding === 'function' ? face.describeBinding(candidate) : undefined;
 							if (described?.binding !== undefined && described?.binding !== null) candidate = described.binding;
 						} catch {
 							// Keep the symbolic form; `same` compares modifier sets.
