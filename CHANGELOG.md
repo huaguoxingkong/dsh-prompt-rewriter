@@ -2,6 +2,17 @@
 
 记录每个**已发布**版本对使用者可见的变化。中英双语并列，中文在前。
 
+## 1.6.3
+
+**中文**
+
+- 快捷键服务不可用时插件不再整体失效。此前宿主的快捷键服务若没有注册（例如与另一个锁定旧版客户端的插件共存），整个插件会保持休眠，输入框旁的按钮也随之消失；现在只有快捷键降级为不可用，改写按钮照常工作。
+- 快捷键服务晚于插件注册时也能读到当前绑定，不再把它显示成「未设置」或「不可用」。
+
+**English**
+
+- The plugin no longer goes dormant when the host's shortcut service is missing. Previously, if that service never registered — for example when another plugin pinned the client runtime to an older range — the whole plugin stayed inactive and the composer button disappeared with it. Only the shortcut degrades now; the Enhance button keeps working.
+- A shortcut service that registers after the plugin now resolves correctly, instead of being reported as unset or unavailable.
 ## 1.6.2
 
 **中文**
