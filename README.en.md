@@ -53,6 +53,14 @@ Come back and the result is already in the composer; if it hasn't finished, the 
 
 That wasn't true in 1.0.x: switching sessions aborted the task, and coming back showed nothing.
 
+### When the composer has attachments or links
+
+Attachments and links are things you already said — the rewrite only touches the sentence beside them.
+
+- Attachment references and link chips stay in place when the rewritten text lands in the composer.
+- Undo restores only the words you typed; your attachments are not swept away with it.
+- What goes into the prompt is the **readable file name**, not the full `@D:\...` path, and a link keeps only its host name. Your local directory layout never travels with the prompt.
+
 ### Keyboard shortcut (off by default)
 
 Turn it on at **Settings → Prompt Enhance → Shortcut**. Desktop uses `Ctrl+E` (`Cmd+E` on macOS); the browser uses `Ctrl+Alt+E` (`Cmd+Alt+E`).
@@ -95,7 +103,7 @@ Only images **currently sitting in the composer** — **never images from earlie
 
 ## Settings
 
-`Settings → Prompt Enhance`. Four switches and one dropdown, affecting **only this button, never normal sending**.
+`Settings → Prompt Enhance`. Four switches and one dropdown, affecting **only this button, never normal sending**. The changelog sits at the bottom of the page.
 
 ![Settings page](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/03-settings-en.png)
 
@@ -110,6 +118,7 @@ Only images **currently sitting in the composer** — **never images from earlie
 - Turning the model switch off does not clear your selection; flipping it back on shows the same choice.
 - Images still uploading are skipped, and the status area tells you how many were missed. A rewrite never fails because of an image.
 - The **current version** sits in the top-right of the settings page; clicking it opens the project home page. Check it before reporting a problem — it makes the issue much easier to pin down.
+- The **changelog** at the bottom folds by version, newest open by default; it is read from the shipped `CHANGELOG.md`, so it works offline.
 
 ## Install
 
@@ -143,6 +152,8 @@ Download the zip from [Releases](https://github.com/huaguoxingkong/dsh-prompt-re
 **"No credentials configured for the current model."** That model has no key set. Switch models, or pin one that works in settings.
 
 **Can I undo the whole rewrite?** One `Ctrl+Z`. It's an ordinary edit step in the composer.
+
+**Do my attachments survive a rewrite?** Yes. Attachment references and links stay as they were; only the text is replaced.
 
 **Does it change messages I already sent?** No. It only edits the draft, and it never sends.
 
