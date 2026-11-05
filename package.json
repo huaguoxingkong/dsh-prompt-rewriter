@@ -1,6 +1,6 @@
 {
   "name": "dsh-prompt-rewriter",
-  "version": "1.6.3",
+  "version": "1.7.0",
   "description": "One-click prompt enhancement beside the DeepSeek Harness composer: rewrites a draft in place without sending it.",
   "type": "module",
   "icon": "icon.svg",
@@ -79,6 +79,11 @@
     }
   },
   "scripts": {
-    "prepublishOnly": "node --check index.js && node --check client.js"
+    "check": "node --check index.js && node --check client.js",
+    "test": "node tests/test-host.mjs && node tests/test-client.mjs && node tests/test-units.mjs && node tests/test-settings.mjs",
+    "gate": "node scripts/gate.mjs",
+    "gate:local": "node scripts/gate.mjs --local",
+    "prepublishOnly": "npm run check && npm test && npm run gate",
+    "pack": "node -e \"require('node:fs').mkdirSync('dist',{recursive:true})\" && npm pack --pack-destination dist"
   }
 }
