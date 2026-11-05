@@ -5,6 +5,10 @@
 [![npm](https://img.shields.io/npm/v/dsh-prompt-rewriter.svg)](https://www.npmjs.com/package/dsh-prompt-rewriter)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/huaguoxingkong/dsh-prompt-rewriter)
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+[![DSH Plugin Hub](https://dshpluginhub.ai/badges/plugins/dsh-prompt-rewriter.svg)](https://dshpluginhub.ai/plugins/dsh-prompt-rewriter)
+[![DeepSeek Harness plugins](https://deepseekharnessplugins.com/api/badge/huaguoxingkong/dsh-prompt-rewriter)](https://deepseekharnessplugins.com/plugins/huaguoxingkong/dsh-prompt-rewriter)
+[![dsh.so risk: low](https://cdn.dsh.so/badge/dsh-prompt-rewriter.svg)](https://www.dsh.so/artifact/dsh-prompt-rewriter/?ref=badge)
 
 把输入框里那句没头没尾的草稿，原地改成能直接执行的任务说明。
 **只改内容，不发送、不运行。** 不满意就 `Ctrl+Z` 回去。
