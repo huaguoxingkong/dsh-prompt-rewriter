@@ -6,7 +6,6 @@ window.__ModuleLoader__.load({
 		const { useCallback, useEffect, useRef, useState } = React;
 
 		const NS = 'prompt-enhance';
-
 		// Official DeepSeek assets, extracted verbatim from the installed Harness
 		// bundles — the brand fish mark and the running whale-tail APNG. See
 		// assets/official.js for provenance; nothing here is redrawn.
@@ -111,6 +110,68 @@ window.__ModuleLoader__.load({
 			'.dsh-pe_sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;',
 			'clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}',
 
+			// ---- Release notes (settings page) -------------------------------------
+			// Card + timeline. Every token below is one the host actually defines, so
+			// both light and dark themes follow the shell instead of a hard-coded colour.
+			'.dsh-pe-changelog{box-sizing:border-box;display:flex;flex-direction:column;',
+			'margin-top:16px;padding:14px 16px 12px;max-width:640px;border-radius:10px;',
+			'border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.22))}',
+			'.dsh-pe-changelogHead{display:flex;align-items:baseline;justify-content:space-between;',
+			'gap:12px}',
+			'.dsh-pe-changelogTitle{font-size:14px;font-weight:600;',
+			'color:var(--dsw-alias-label-primary,inherit)}',
+			'.dsh-pe-changelogCount{font-size:12px;flex:none;',
+			'color:var(--dsw-alias-label-tertiary,inherit)}',
+			'.dsh-pe-changelogList{position:relative;display:flex;flex-direction:column;',
+			'margin-top:12px;padding-left:18px}',
+			'.dsh-pe-changelogList::before{content:"";position:absolute;left:4px;top:8px;',
+			'bottom:8px;width:1px;',
+			'background:var(--dsw-alias-border-l1,rgba(128,128,128,.22))}',
+			'.dsh-pe-changelogEntry{position:relative;display:flex;flex-direction:column;',
+			'padding:1px 0}',
+			'.dsh-pe-changelogDot{position:absolute;left:-18px;top:11px;width:9px;height:9px;',
+			'box-sizing:border-box;border-radius:50%;border:2px solid ',
+			'var(--dsw-alias-label-tertiary,rgba(128,128,128,.5));',
+			'background:transparent}',
+			'.dsh-pe-changelogEntry[data-latest="true"] .dsh-pe-changelogDot{',
+			'border-color:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6);',
+			'background:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6)}',
+			'.dsh-pe-changelogRow{display:flex;align-items:center;gap:8px;width:100%;',
+			'padding:7px 8px;border:0;border-radius:6px;background:transparent;',
+			'cursor:pointer;font:inherit;text-align:left;',
+			'color:var(--dsw-alias-label-primary,inherit)}',
+			'.dsh-pe-changelogRow:hover{background:rgba(128,128,128,.09)}',
+			'.dsh-pe-changelogRow:focus-visible{outline:2px solid ',
+			' var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6);outline-offset:1px}',
+			'.dsh-pe-changelogBadge{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;',
+			'font-size:12px;font-weight:600;letter-spacing:.02em;padding:2px 7px;border-radius:5px;',
+			'border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.22))}',
+			'.dsh-pe-changelogEntry[data-latest="true"] .dsh-pe-changelogBadge{',
+			'color:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6);',
+			'border-color:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6)}',
+			'.dsh-pe-changelogLatest{flex:none;font-size:11px;font-weight:600;padding:1px 6px;',
+			'border-radius:4px;color:#fff;',
+			'background:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6)}',
+			'.dsh-pe-changelogMeta{font-size:12px;',
+			'color:var(--dsw-alias-label-tertiary,inherit)}',
+			'.dsh-pe-changelogChevron{margin-left:auto;width:8px;height:8px;flex:none;',
+			'border-right:1.5px solid var(--dsw-alias-label-tertiary,currentColor);',
+			'border-bottom:1.5px solid var(--dsw-alias-label-tertiary,currentColor);',
+			'transform:rotate(45deg);transition:transform .18s ease}',
+			'.dsh-pe-changelogEntry[data-open="true"] .dsh-pe-changelogChevron{',
+			'transform:rotate(225deg)}',
+			'.dsh-pe-changelogItems{margin:4px 0 10px;padding:0 0 0 16px;list-style:none}',
+			'.dsh-pe-changelogItems li{position:relative;margin:6px 0;font-size:13px;',
+			'line-height:1.7;color:var(--dsw-alias-label-secondary,inherit)}',
+			'.dsh-pe-changelogItems li::before{content:"";position:absolute;left:-12px;top:9px;',
+			'width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.45}',
+			'.dsh-pe-changelogFoot{margin-top:10px;padding-top:10px;font-size:12px;',
+			'text-decoration:none;border-top:1px solid ',
+			'var(--dsw-alias-border-l1,rgba(128,128,128,.22));',
+			'color:var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6)}',
+			'.dsh-pe-changelogFoot:hover{text-decoration:underline}',
+			'.dsh-pe-changelogFoot:focus-visible{outline:2px solid currentColor;',
+			'outline-offset:2px;border-radius:2px}',
 			// ---- Settings page -------------------------------------------------
 			// Host theme tokens only, so the page follows light/dark automatically.
 			'.dsh-pe-settings{display:flex;flex-direction:column;gap:4px;max-width:640px}',
@@ -146,17 +207,18 @@ window.__ModuleLoader__.load({
 			'line-height:18px;overflow-wrap:break-word}',
 			'.dsh-pe-settingsControl{flex:0 1 auto;display:flex;align-items:center;min-height:24px;margin-left:auto}',
 			'.dsh-pe-input{box-sizing:border-box;width:220px;max-width:100%;height:30px;padding:0 8px;',
-			'border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l2);',
+			'border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l1);',
 			'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);',
 			'font:inherit;font-size:13px;line-height:20px;outline:none}',
 			'.dsh-pe-input:focus-visible{border-color:var(--dsw-alias-brand-primary);',
 			'box-shadow:0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}',
 			'.dsh-pe-input::placeholder{color:var(--dsw-alias-label-tertiary)}',
-			// The picker row: a switch followed by the model list, matching the
-			// composer's own selector styling.
-			'.dsh-pe-modelPicker{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}',
+			// The model <select> follows the switch on its own full-width line,
+			// right-aligned under it. flex:0 0 100% forces the wrap; max-width on
+			// the select keeps narrow panels from squeezing the control.
+			'.dsh-pe-settingsExtra{flex:0 0 100%;display:flex;justify-content:flex-end;min-width:0}',
 			'.dsh-pe-select{box-sizing:border-box;width:240px;max-width:100%;height:30px;padding:0 8px;',
-			'border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l2);',
+			'border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l1);',
 			'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);',
 			'font:inherit;font-size:13px;line-height:20px;outline:none;cursor:pointer}',
 			'.dsh-pe-select:focus-visible{border-color:var(--dsw-alias-brand-primary);',
@@ -164,7 +226,7 @@ window.__ModuleLoader__.load({
 			'.dsh-pe-select:disabled{opacity:.55;cursor:default}',
 			// A compact 36x20 switch: the knob is the only moving part.
 			'.dsh-pe-switch{position:relative;flex:none;width:36px;height:20px;padding:0;border:0;',
-			'border-radius:999px;background:var(--dsw-alias-border-l2);cursor:pointer;',
+			'border-radius:999px;background:var(--dsw-alias-border-l1);cursor:pointer;',
 			'transition:background-color .15s ease}',
 			'.dsh-pe-switch[data-on="true"]{background:var(--dsw-alias-brand-primary)}',
 			'.dsh-pe-switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;',
@@ -178,7 +240,7 @@ window.__ModuleLoader__.load({
 			// ---- shortcut row ----------------------------------------------------
 			'.dsh-pe-shortcut{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
 			'.dsh-pe-binding{box-sizing:border-box;min-width:96px;height:30px;padding:0 10px;',
-			'border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l2);',
+			'border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l1);',
 			'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);',
 			'font:inherit;font-size:12px;line-height:20px;cursor:pointer;',
 			'font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace)}',
@@ -676,6 +738,8 @@ window.__ModuleLoader__.load({
 			// The composer's own attachment list. Only these images may be referenced;
 			// images from earlier turns live in the session log and are never read here.
 			const attachmentIds = useInput((state) => state.attachmentIds);
+			// Reference chips (files / links) from the same snapshot as `draft`.
+			const occurrences = useInput((state) => state.occurrences);
 			// Task state lives in the module-level registry, keyed by session, so it
 			// outlives this component instance. Switching sessions only changes which
 			// entry is read; it never cancels work.
@@ -748,6 +812,9 @@ window.__ModuleLoader__.load({
 			// attempted from a closure created in an earlier render (or an earlier mount).
 			const latestDraft = useRef(draft);
 			latestDraft.current = draft;
+			// Keep the chip list current without re-creating the writer on every render.
+			const occurrencesRef = useRef(occurrences);
+			occurrencesRef.current = occurrences;
 
 			// NO abort on unmount. The component unmounts whenever the user switches
 			// away from this session, and aborting there is exactly what made the
@@ -756,7 +823,33 @@ window.__ModuleLoader__.load({
 			useEffect(() => () => {}, []);
 
 			const replaceDraft = useCallback(
-				(text, before, rev) => inputActions?.insertText(text, { start: 0, end: before.length, draftRev: rev }) === true,
+				(text, before, rev) => {
+					if (inputActions === undefined || typeof inputActions.insertText !== 'function') return false;
+					const clean = sanitizeForInsert(text);
+					const plan = planDraftReplacement(before, occurrencesRef.current);
+					if (plan.segments.length === 0) return false;
+					// Back to front: editing a later run cannot move an earlier run's
+					// detect offsets. Each successful insert bumps the host revision, so
+					// every call asks for the CURRENT one rather than reusing the captured
+					// value. Only the last (right-most) run receives the new text; the
+					// others are cleared, leaving every chip in place.
+					for (let i = plan.segments.length - 1; i >= 0; i -= 1) {
+						const segment = plan.segments[i];
+						let liveRev = rev;
+						if (typeof inputActions.captureInsertion === 'function') {
+							const insertion = inputActions.captureInsertion();
+							if (insertion !== null && insertion !== undefined
+								&& Number.isFinite(insertion.draftRev)) liveRev = insertion.draftRev;
+						}
+						const payload = i === plan.segments.length - 1 ? clean : '';
+						const accepted = inputActions.insertText(
+							payload,
+							{ start: segment.start, end: segment.end, draftRev: liveRev },
+						);
+						if (accepted !== true) return false;
+					}
+					return true;
+				},
 				[inputActions],
 			);
 
@@ -773,6 +866,115 @@ window.__ModuleLoader__.load({
 					taskStore.patch(sessionId, { restore: null, failure: null });
 				}
 			}, [draft, draftRev, replaceDraft, restore, sessionId]);
+
+		// ---- Composer coordinate systems ---------------------------------------
+		// Host evidence (_asar/conv/lib/client.js):
+		//   compose()                  -> draft: this.projection.clipboardText
+		//   $composerLayout()          -> pushLeaf("chip", kid, "\uFFFC", kid.getTextContent())
+		//   selectSpan()               -> if (span.end > layout.detectLength) return null
+		//   detectOffsetOfClipboardOffset() -> folds a clipboard end to its detect twin
+		// A chip is one character in detect but its whole label in clipboard, so the
+		// two projections differ by (label.length - 1) per chip.
+		const REFERENCE_PLACEHOLDER_RE = /[\uE100-\uE11D\uFFFC]/gu;
+
+		// A chip label is a full disk path ("@D:\\course\\slides.pdf") or a URL. Keep
+		// only the readable leaf: the file name still carries useful information (a
+		// password in its name, for instance), while the directory is pure noise.
+		function shortenAttachmentLabel(label) {
+			const bare = String(label ?? '').trim().replace(/^@/u, '');
+			const url = /^https?:\/\/([^/\s]+)/iu.exec(bare);
+			if (url !== null) return url[1].slice(0, 120);
+			const leaf = bare.split(/[\\/]/u).filter(Boolean).pop();
+			return String(leaf || bare).slice(0, 120);
+		}
+
+		/** Chip projections positioned in clipboard coordinates, in document order. */
+		function chipEntries(before, occurrences) {
+			return (Array.isArray(occurrences) ? occurrences.slice() : [])
+				.filter((o) => o !== null && typeof o === 'object'
+					&& Number.isFinite(o.offset) && Number.isFinite(o.length))
+				.sort((a, b) => a.offset - b.offset)
+				.map((o, index) => {
+					const label = typeof o.clipboardText === 'string' && o.clipboardText.length > 0
+						? o.clipboardText
+						: before.slice(o.offset, o.offset + o.length);
+					return { offset: o.offset, length: label.length, label, number: index + 1 };
+				});
+		}
+
+		/** Draft as the MODEL should see it: chips become short, path-free markers. */
+		function draftForModel(before, occurrences) {
+			let text = before;
+			const entries = chipEntries(before, occurrences);
+			for (let i = entries.length - 1; i >= 0; i -= 1) {
+				const entry = entries[i];
+				if (entry.offset < 0 || entry.offset + entry.length > before.length) continue;
+				const marker = '[附件' + entry.number + ': ' + shortenAttachmentLabel(entry.label) + ']';
+				text = text.slice(0, entry.offset) + marker + text.slice(entry.offset + entry.length);
+			}
+			return text;
+		}
+
+		/** Only the user's typed text. Chips stay in the editor, so never write them back. */
+		function stripChipLabels(before, occurrences) {
+			let text = before;
+			const entries = chipEntries(before, occurrences);
+			for (let i = entries.length - 1; i >= 0; i -= 1) {
+				const entry = entries[i];
+				if (entry.offset < 0 || entry.offset + entry.length > before.length) continue;
+				text = text.slice(0, entry.offset) + text.slice(entry.offset + entry.length);
+			}
+			return text;
+		}
+
+		// A model may still echo a path it saw in history. Shorten it before the write
+		// rather than letting a disk address land in the prompt. Only absolute paths
+		// with a file extension are matched, so ordinary prose is untouched.
+		const ATTACHMENT_PATH_RE = /@?[A-Za-z]:\\[^\r\n]*?\.[A-Za-z0-9]{2,5}(?=[\s，。；、)}\]"']|$)/gu;
+
+		/** Normalise text before writing so the host can never silently strip it. */
+		function sanitizeForInsert(text) {
+			const clean = String(text ?? '').replace(REFERENCE_PLACEHOLDER_RE, '');
+			return clean.replace(ATTACHMENT_PATH_RE, (match) => shortenAttachmentLabel(match));
+		}
+
+		/**
+		 * Plan a whole-draft replacement in DETECT coordinates while keeping chips.
+		 * @param before - the clipboard-projected draft that was rewritten.
+		 * @param occurrences - chip projections from the same composer snapshot.
+		 * @returns text runs to replace, and the detect end of the document.
+		 */
+		function planDraftReplacement(before, occurrences) {
+			const chips = (Array.isArray(occurrences) ? occurrences.slice() : [])
+				.filter((o) => o !== null && typeof o === 'object'
+					&& Number.isFinite(o.offset) && Number.isFinite(o.length))
+				.sort((a, b) => a.offset - b.offset);
+			let shift = 0;
+			const chipSpans = [];
+			for (const chip of chips) {
+				const labelLength = typeof chip.clipboardText === 'string'
+					? chip.clipboardText.length
+					: chip.length;
+				const start = Math.max(0, chip.offset - shift);
+				chipSpans.push({ start, end: start + 1 });
+				shift += Math.max(0, labelLength - 1);
+			}
+			const detectEnd = Math.max(0, before.length - shift);
+			const segments = [];
+			let cursor = 0;
+			for (const span of chipSpans) {
+				if (span.start > cursor) segments.push({ start: cursor, end: span.start });
+				cursor = Math.max(cursor, span.end);
+			}
+			if (cursor < detectEnd) segments.push({ start: cursor, end: detectEnd });
+			// Chip-only draft: there is no text to replace, but the user still clicked
+			// Enhance. Give the rewrite a collapsed insertion point after the last chip
+			// so it lands without deleting any attachment.
+			if (segments.length === 0 && detectEnd > 0) {
+				segments.push({ start: detectEnd, end: detectEnd });
+			}
+			return { segments, detectEnd, chipCount: chipSpans.length };
+		}
 
 		/** Encode bytes as canonical base64 for the JSON request body. */
 		function bytesToBase64(bytes) {
@@ -941,7 +1143,7 @@ window.__ModuleLoader__.load({
 							method: 'POST',
 							credentials: 'same-origin',
 							headers: { 'content-type': 'application/json' },
-							body: JSON.stringify({ sessionId, draft: before, images: collected.images }),
+							body: JSON.stringify({ sessionId, draft: draftForModel(before, occurrencesRef.current), images: collected.images }),
 							signal: controller.signal,
 						});
 						if (!response.ok) throw new Error(t('state.transport', { status: response.status }));
@@ -966,7 +1168,9 @@ window.__ModuleLoader__.load({
 							// The undo offer is only meaningful once the text actually landed in the
 							// editor; offering it after a refused or superseded write would claim a
 							// swap that never happened.
-							taskStore.patch(sessionId, { restore: { text: before, produced: null, pending: true } });
+							// Only the typed text is restorable: the chips never left the editor,
+							// and writing their labels back would duplicate every attachment.
+							taskStore.patch(sessionId, { restore: { text: stripChipLabels(before, occurrencesRef.current), produced: null, pending: true } });
 						} else if (outcome === 'refused') {
 							taskStore.patch(sessionId, { restore: null, failure: t('state.refused') });
 						} else if (outcome === 'parked') {
@@ -1044,7 +1248,18 @@ window.__ModuleLoader__.load({
 					// finished rewrite look like it had simply stopped. The draft being unchanged
 					// is the real invariant, so accept either signal.
 					if (latestRev.current !== rev && latestDraft.current !== before) return 'stale';
-					return replaceDraft(text, before, rev) === true ? 'applied' : 'refused';
+					// The write must carry the CURRENT revision, never the captured one.
+					//
+					// Attaching a file or a link chip commits an editor edit that bumps the
+					// composer revision without changing the draft text: the projection changes
+					// through its `occurrences`, not through the characters. That is exactly the
+					// case the stale guard above lets through, and writing with the click-time
+					// revision then fails the host's `span.draftRev !== this.rev` check — the
+					// result was thrown away and the user saw "输入框没有接受替换".
+					//
+					// The range is `[0, before.length]` over a draft already verified to still be
+					// `before`, so the revision only has to be current, not captured.
+					return replaceDraft(text, before, latestRev.current) === true ? 'applied' : 'refused';
 				};
 				taskStore.patch(sessionId, { applyResult: apply });
 				return () => {
@@ -1434,6 +1649,9 @@ window.__ModuleLoader__.load({
 			// `{ version, url }` reported by the Host from the package manifest. Never
 			// hard-coded here: a release only bumps package.json.
 			const [about, setAbout] = useState(null);
+			// Release notes shipped with the package; newest version is open by default.
+			const [changelog, setChangelog] = useState([]);
+			const [openVersion, setOpenVersion] = useState(null);
 			// Keyboard-recording state for the shortcut row.
 			const [recording, setRecording] = useState(false);
 			const [shortcutError, setShortcutError] = useState(null);
@@ -1502,6 +1720,10 @@ window.__ModuleLoader__.load({
 						if (body?.ok !== true) throw new Error(body?.message || t('settings.loadFailed', { status: response.status }));
 						setValues(body.values);
 						if (body.about !== undefined) setAbout(body.about);
+						if (Array.isArray(body.changelog)) {
+							setChangelog(body.changelog);
+							setOpenVersion(body.changelog.length > 0 ? body.changelog[0].version : null);
+						}
 					} catch (failure) {
 						if (alive.current && !controller.signal.aborted) setError(failure instanceof Error ? failure.message : String(failure));
 					}
@@ -1608,11 +1830,12 @@ window.__ModuleLoader__.load({
 				? shortcutError
 				: (recording ? t('settings.shortcut.recordHint') : t('settings.shortcut.hint'));
 
-			const row = (id, title, hint, control) =>
+			const row = (id, title, hint, control, extra) =>
 				h(
 					'div',
 					{ className: 'dsh-pe-settingsRow', 'data-row': id },				h('div', { className: 'dsh-pe-settingsCopy' }, h('div', { className: 'dsh-pe-settingsTitle' }, title), h('p', { className: 'dsh-pe-settingsHint' }, hint)),
 					h('div', { className: 'dsh-pe-settingsControl' }, control),
+					extra === undefined ? null : h('div', { className: 'dsh-pe-settingsExtra' }, extra),
 				);
 
 			// `saving` names the control currently in flight, not a blanket lock.
@@ -1654,51 +1877,49 @@ window.__ModuleLoader__.load({
 					'model',
 					t('settings.model.title'),
 					values.useCustomModel ? t('settings.model.on') : t('settings.model.off'),
-					h('div', { className: 'dsh-pe-modelPicker' },
-						toggle('settings.useCustomModel', values.useCustomModel, (next) => save({ useCustomModel: next }, 'settings.useCustomModel')),
-						h('select', {
-							className: 'dsh-pe-select',
-							// The stored pin is always shown, even while the switch is off: the
-							// switch means "apply it" rather than "forget it", so re-enabling
-							// restores the last real choice instead of asking again.
-							value: values.enhanceModel === '' ? '' : `${values.enhanceProvider}\u0000${values.enhanceModel}`,
-							// Enabled whenever the custom-model switch is on. `saving` holds the
-							// id of the control being written, so compare it explicitly — using
-							// it as a bare truthiness check disabled the picker permanently.
-							disabled: saving === 'settings.model' || !values.useCustomModel,
-							'aria-label': t('settings.model.title'),
-							onChange: (event) => {
-								const raw = event.target.value;
-								if (raw === '') {
-									// Explicitly clearing the choice is still allowed, but it is an
-									// action the user takes, never a side effect of the switch.
-									save({ enhanceProvider: '', enhanceModel: '' }, 'settings.model');
-									return;
-								}
-								const [provider, model] = raw.split('\u0000');
-								save({ enhanceProvider: provider, enhanceModel: model }, 'settings.model');
-							},
+					toggle('settings.useCustomModel', values.useCustomModel, (next) => save({ useCustomModel: next }, 'settings.useCustomModel')),
+					h('select', {
+						className: 'dsh-pe-select',
+						// The stored pin is always shown, even while the switch is off: the
+						// switch means "apply it" rather than "forget it", so re-enabling
+						// restores the last real choice instead of asking again.
+						value: values.enhanceModel === '' ? '' : `${values.enhanceProvider}\u0000${values.enhanceModel}`,
+						// Enabled whenever the custom-model switch is on. `saving` holds the
+						// id of the control being written, so compare it explicitly — using
+						// it as a bare truthiness check disabled the picker permanently.
+						disabled: saving === 'settings.model' || !values.useCustomModel,
+						'aria-label': t('settings.model.title'),
+						onChange: (event) => {
+							const raw = event.target.value;
+							if (raw === '') {
+								// Explicitly clearing the choice is still allowed, but it is an
+								// action the user takes, never a side effect of the switch.
+								save({ enhanceProvider: '', enhanceModel: '' }, 'settings.model');
+								return;
+							}
+							const [provider, model] = raw.split('\u0000');
+							save({ enhanceProvider: provider, enhanceModel: model }, 'settings.model');
 						},
-							// The empty option means "no pin stored yet". It is NOT the resting
-							// state while the switch is off: with a stored choice the picker
-							// shows that choice even before the switch is turned on, so the
-							// user can see what will be applied.
-							h('option', { value: '' }, catalog.status === 'loading'
-								? t('settings.model.loading')
-								: catalog.status === 'error'
-									? t('settings.model.loadError')
-									: t('settings.model.placeholder')),
-							// Only models the user actually owns: the catalog is the same one the
-							// composer picker uses, so a non-existent model cannot be chosen.
-							...catalog.groups.flatMap((group) =>
-								group.models.length === 0
-									? []
-									: [h('optgroup', { key: group.id, label: group.label },
-										...group.models.map((model) =>
-											h('option', { key: `${group.id}/${model.id}`, value: `${group.id}\u0000${model.id}` }, model.name),
-										),
-									)],
-							),
+					},
+						// The empty option means "no pin stored yet". It is NOT the resting
+						// state while the switch is off: with a stored choice the picker
+						// shows that choice even before the switch is turned on, so the
+						// user can see what will be applied.
+						h('option', { value: '' }, catalog.status === 'loading'
+							? t('settings.model.loading')
+							: catalog.status === 'error'
+								? t('settings.model.loadError')
+								: t('settings.model.placeholder')),
+						// Only models the user actually owns: the catalog is the same one the
+						// composer picker uses, so a non-existent model cannot be chosen.
+						...catalog.groups.flatMap((group) =>
+							group.models.length === 0
+								? []
+								: [h('optgroup', { key: group.id, label: group.label },
+									...group.models.map((model) =>
+										h('option', { key: `${group.id}/${model.id}`, value: `${group.id}\u0000${model.id}` }, model.name),
+									),
+								)],
 						),
 					),
 				),
@@ -1746,6 +1967,49 @@ window.__ModuleLoader__.load({
 							onClick: resetShortcut,
 						}, t('settings.shortcut.resetShort')),
 					),
+				),
+
+				changelog.length > 0 && h('div', { className: 'dsh-pe-changelog' },
+					h('div', { className: 'dsh-pe-changelogHead' },
+						h('span', { className: 'dsh-pe-changelogTitle' }, t('settings.changelog.title')),
+						h('span', { className: 'dsh-pe-changelogCount' },
+							t('settings.changelog.count', { count: changelog.length })),
+					),
+					h('div', { className: 'dsh-pe-changelogList' },
+						...changelog.map((entry, index) => {
+							const open = openVersion === entry.version;
+							return h('div', {
+								key: entry.version,
+								className: 'dsh-pe-changelogEntry',
+								'data-open': open ? 'true' : 'false',
+								'data-latest': index === 0 ? 'true' : 'false',
+							},
+								h('span', { className: 'dsh-pe-changelogDot', 'aria-hidden': 'true' }),
+								h('button', {
+									type: 'button',
+									className: 'dsh-pe-changelogRow',
+									'aria-expanded': open,
+									onClick: () => setOpenVersion(open ? null : entry.version),
+								},
+									h('span', { className: 'dsh-pe-changelogBadge' }, 'v' + entry.version),
+									index === 0 && h('span', { className: 'dsh-pe-changelogLatest' },
+										t('settings.changelog.latest')),
+									h('span', { className: 'dsh-pe-changelogMeta' },
+										t('settings.changelog.items', { count: entry.items.length })),
+									h('span', { className: 'dsh-pe-changelogChevron', 'aria-hidden': 'true' }),
+								),
+								open && h('ul', { className: 'dsh-pe-changelogItems' },
+									...entry.items.map((item, itemIndex) => h('li', { key: itemIndex }, item)),
+								),
+							);
+						}),
+					),
+					about?.url !== undefined && h('a', {
+						className: 'dsh-pe-changelogFoot',
+						href: about.url + '/releases',
+						target: '_blank',
+						rel: 'noopener noreferrer',
+					}, t('settings.changelog.full')),
 				),
 
 				error !== null && h('p', { className: 'dsh-pe-settingsError', role: 'alert' }, error),
@@ -1863,6 +2127,11 @@ window.__ModuleLoader__.load({
 								// Settings page
 								'nav': '提示词增强',
 								'settings.intro': '只影响「增强提示词」按钮，不影响正常发送。',
+								'settings.changelog.title': '更新日志',
+								'settings.changelog.count': '共 {count} 个版本',
+								'settings.changelog.latest': '最新',
+								'settings.changelog.items': '{count} 项更新',
+								'settings.changelog.full': '在 GitHub 查看完整日志 ↗',
 								'settings.loading': '正在读取设置…',
 								'settings.loadFailed': '读取设置失败（HTTP {status}）。',
 								'settings.saveFailed': '保存设置失败。',
@@ -1910,6 +2179,11 @@ window.__ModuleLoader__.load({
 								// Settings page
 								'nav': 'Prompt Enhance',
 								'settings.intro': 'These options only affect the Enhance prompt button; they never change what you send.',
+								'settings.changelog.title': 'Changelog',
+								'settings.changelog.count': '{count} versions',
+								'settings.changelog.latest': 'Latest',
+								'settings.changelog.items': '{count} changes',
+								'settings.changelog.full': 'View full history on GitHub ↗',
 								'settings.loading': 'Loading settings…',
 								'settings.loadFailed': 'Could not load settings (HTTP {status}).',
 								'settings.saveFailed': 'Could not save the setting.',
