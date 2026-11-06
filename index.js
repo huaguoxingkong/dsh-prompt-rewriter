@@ -867,9 +867,11 @@ async function admitComposerImage(scope, image, signal) {
  * @param history - collected conversation context.
  * @param images - model-ready composer image parts.
  * @param signal - combined cancellation for this request.
+ * @param windowCache - per-route context-window cache.
+ * @param sessionId - the browser-reported Session id, when present.
  * @returns the rewritten prompt text.
  */
-async function generate(scope, config, route, draft, history, images, signal, windowCache) {
+async function generate(scope, config, route, draft, history, images, signal, windowCache, sessionId) {
 	const llm = scope.llm;
 	if (llm === undefined) throw new EnhanceFailure('UNAVAILABLE', '当前运行的 Harness 未提供模型服务，无法增强提示词。');
 	const providers = llm.listProviders();
@@ -907,7 +909,15 @@ async function generate(scope, config, route, draft, history, images, signal, wi
 		let finish;
 		// Reasoning is counted for diagnosis only; it is never part of the prompt.
 		let reasoningChars = 0;
-		for await (const chunk of call.stream({ ...call.config, system, messages, signal })) {
+		// Some routes key request routing by Session. OpenCode requires the
+		// `x-opencode-session` header and only emits it when `options.sessionId`
+		// reaches the provider, so without the id those targets answer 400 and the
+		// whole enhancement fails. Providers that ignore the field are unaffected,
+		// and an absent id leaves the request exactly as it was.
+		for await (const chunk of call.stream({
+			...call.config, system, messages, signal,
+			...(sessionId === undefined ? {} : { sessionId }),
+		})) {
 			signal.throwIfAborted();
 			if (chunk.type === 'text-delta') {
 				text += chunk.text;
@@ -1062,7 +1072,7 @@ async function handle(scope, config, request, lifetime, windowCache) {
 			}
 		}
 
-		const text = await generate(scope, config, route, draft, history, images, signal, windowCache);
+		const text = await generate(scope, config, route, draft, history, images, signal, windowCache, sessionId);
 		return Response.json({
 			ok: true,
 			text,
