@@ -1,12 +1,12 @@
 {
   "screenshots": [
     "docs/images/01-hero.gif",
-    "docs/images/05-button-states.gif",
-    "docs/images/03-settings.png",
-    "docs/images/04-context-modes.png",
+    "docs/images/02-button-states.gif",
+    "docs/images/04-settings.png",
+    "docs/images/03-context-modes.png",
     "docs/images/01-hero-en.gif",
-    "docs/images/05-button-states-en.gif",
-    "docs/images/03-settings-en.png",
-    "docs/images/04-context-modes-en.png"
+    "docs/images/02-button-states-en.gif",
+    "docs/images/04-settings-en.png",
+    "docs/images/03-context-modes-en.png"
   ]
 }

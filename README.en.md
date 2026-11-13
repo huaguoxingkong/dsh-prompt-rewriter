@@ -17,33 +17,33 @@ Turns the half-formed draft in your composer into a task instruction you can act
 
 ---
 
-![Click the whale-tail icon on the right of the composer and the draft becomes a complete prompt in place](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/01-hero-en.gif)
+![Click the whale-tail icon on the right of the composer and the draft becomes a complete prompt in place](https://cdn.jsdelivr.net/npm/dsh-prompt-rewriter/docs/images/01-hero-en.gif)
 
 ## What it fills in for you
 
 A one-line draft is missing **goal, format, and boundaries**. The model can only guess — guess wrong and you spend another round rewording. This button puts those three things back into the sentence you already wrote:
 
-| | What you typed | What goes back in the box |
+| What changed | Your draft | What goes back in the box |
 |---|---|---|
-| You wrote | *help me write a scraper for Douban movies* | the same sentence |
+| Original wording | *help me write a scraper for Douban movies* | the same sentence |
 | Goal added | | scrape **Top 250** titles, **ratings and links** |
 | Format added | | output a **CSV file** |
 | Boundaries added | | respect robots.txt, **wait at least 2s between requests**, back off on rate limits **instead of circumventing them** |
 
 The third column is not something you wrote. It read your sentence and filled it in. **And it stays editable** — it lands in the composer, not somewhere else.
 
-It also fixes two long-standing annoyances: **it never asks you a question back** (if the model slips one into the rewrite, the question is dropped and the rewrite kept; if the whole reply is a question it re-runs on the legacy rules, and failing that keeps your draft), and **the rule set is swappable** (Legacy / Intent-first / WorkBuddy, one row in settings — same button, same steps).
+Two more points worth stating: **the rewrite never contains a question back** (if the model slips one into the rewrite, the question is dropped and the rewrite kept; if the whole reply is a question, it re-runs on the legacy rules and otherwise keeps your draft); and **the rule set is switchable** (Legacy / Intent-first / WorkBuddy, changed in settings, with the button and the steps unchanged).
 
 ## How to use it
 
 1. Type any draft in the composer — shorter is fine.
 2. Click the **whale-tail icon** in the right-hand control group of the composer (a small blue dot means it will use conversation context). It shares that group with the model picker and send button, and other plugins may add controls between them. It isn't there when the box is empty.
-3. A second later the draft is replaced with the rewritten prompt.
+3. A moment later — how long depends on the chosen model — the draft is replaced with the rewritten prompt.
 4. Not what you wanted? `Ctrl+Z`, or click the undo arrow the button turned into.
 
 Changed your mind mid-flight? Click again to cancel. The draft stays exactly as it was — no half-finished text left behind.
 
-How hard it rewrites is the *Enhancement rule set* in settings: **Legacy** (default) matches 1.7.1, **Intent-first** fills in more, **WorkBuddy** uses its original prompt. Switching rules changes neither the button nor the steps.
+How hard it rewrites is the *Enhancement rule set* in settings: **Legacy** (default) behaves like 1.7.1, **Intent-first** fills in more, **WorkBuddy** uses its original prompt. Switching rules changes neither the button nor the steps.
 
 ### For faster results, pick a stable model
 
@@ -59,14 +59,13 @@ Once you've clicked, you don't have to sit and wait. **Switch to another session
 
 Come back and the result is already in the composer; if it hasn't finished, the button is still the spinning tail. Two sessions can each run their own rewrite without interfering.
 
-That wasn't true in 1.0.x: switching sessions aborted the task, and coming back showed nothing.
-
 ### When the composer has attachments or links
 
 Attachments and links are things you already said — the rewrite only touches the sentence beside them.
 
 - Attachment references and link chips stay in place when the rewritten text lands in the composer.
 - Undo restores only the words you typed; your attachments are not swept away with it.
+- **Attachment content** is read only while *Reference attachment content* is on: at most 2 non-image attachments of 5 MiB each, and text-like files contribute the first 6,000 characters. With it off, only up to 8 file names are used as context.
 - What goes into the prompt is the **readable file name**, not the full `@D:\...` path, and a link keeps only its host name. Your local directory layout never travels with the prompt.
 
 ### Keyboard shortcut (off by default)
@@ -81,12 +80,12 @@ Turn it on at **Settings → Prompt Enhance → Shortcut**. Desktop uses `Ctrl+E
 
 ### The four button states
 
-![Button states: idle, rewriting, done and undoable, failed and retryable](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/05-button-states-en.gif)
+![Button states: idle, rewriting, done and undoable, failed and retryable](https://cdn.jsdelivr.net/npm/dsh-prompt-rewriter/docs/images/02-button-states-en.gif)
 
 | State | What you see | What it means |
 |---|---|---|
 | Idle | static whale tail | ready to click |
-| Rewriting | the tail spins into a spiral | running; click again to cancel |
+| Rewriting | the tail spins fast | running; click again to cancel |
 | Done | turns into an undo arrow | one click back, or `Ctrl+Z` |
 | Failed | red retry icon + reason | the reason sits right next to it — no log hunting |
 
@@ -94,7 +93,7 @@ Turn it on at **Settings → Prompt Enhance → Shortcut**. Desktop uses `Ctrl+E
 
 ### 1. Whether it reads the conversation
 
-![Empty session vs. existing conversation: the small dot in the corner is the marker](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/04-context-modes-en.png)
+![Empty session vs. existing conversation: the small dot in the corner is the marker](https://cdn.jsdelivr.net/npm/dsh-prompt-rewriter/docs/images/03-context-modes-en.png)
 
 The **small dot in the button's lower-right corner** is the whole difference:
 
@@ -107,7 +106,7 @@ Conversation context costs tokens. If long chats feel slow or expensive, turn of
 
 ### 2. Whether it reads images
 
-Only images **currently sitting in the composer** — **never images from earlier messages**. That line is deliberate: old pasted screenshots are slow to process and easy to misread, so they're out of scope.
+Only images **currently sitting in the composer** — **never images from earlier messages**. That line is deliberate: old pasted screenshots are slow to process and easy to misread, so they are excluded.
 
 ### 3. Whether it reads attachments
 
@@ -115,9 +114,9 @@ Only **non-image attachments currently in the composer** — attachments from ea
 
 ## Settings
 
-`Settings → Prompt Enhance`. Five switches, a model dropdown and a rule-set dropdown, affecting **only this button, never normal sending**. The changelog sits at the bottom of the page.
+`Settings → Prompt Enhance`. Five switches and two selectors (model, rule set), affecting **only this button, never normal sending**.
 
-![Settings page](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/03-settings-en.png)
+![Settings page](https://cdn.jsdelivr.net/npm/dsh-prompt-rewriter/docs/images/04-settings-en.png)
 
 | Option | Default | What turning it on does |
 |---|---|---|
@@ -238,12 +237,13 @@ The plugin has a Host half and a Client half. The Host depends only on host serv
 
 Client HMR comes from `@deepseek-ai/dsh-client-hmr`, which the Web composition always mounts. It is not the Host's `hmr`: this machine's profile sets the Host `hmr` to `disabled: true` (see the note in `cordis.patch.yml`), so Host **code** is not hot-reloaded. Settings changed in the UI still take effect immediately (they go through the settings service, not file watching); editing `cordis.patch.yml` by hand is what needs a restart.
 
-**Unit tests are not published with this repository.** Development-time tests depend on the host's private `@deepseek-ai/schemastery`, a copy of the host's React, and this machine's profile layout — publishing them would hand users files that cannot run.
+**Unit tests are not published in the npm package.** The repo carries the full `tests/` tree and `scripts/gate.mjs`, but they depend on the host's private `@deepseek-ai/schemastery`, a copy of the host's React, and this machine's profile layout, so a fresh clone cannot run them as-is — they stay in the repo and out of the tarball. Every release runs them locally first.
 
 ```sh
-node --check index.js      # syntax
+node --check index.js            # syntax
 node --check client.js
-npm pack --dry-run         # inspect what would ship
+node scripts/gate.mjs            # rule/shape gate (required before release)
+npm pack --dry-run               # inspect what would ship
 ```
 
 ## License
