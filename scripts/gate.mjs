@@ -195,7 +195,33 @@ if (LOCAL && fs.existsSync(PROFILE)) {
 	console.log('SKIP  profile checks (pass --local on a developer machine)');
 }
 
-// --- 5. changelog present -------------------------------------------------
+// --- 5. README image references --------------------------------------------
+// A README image pointing at a file we do not ship renders as a broken picture
+// on npm. The 1.8.x line renamed every screenshot, so the mapping is checked
+// mechanically instead of by eye: each reference must resolve to a shipped file,
+// the two locales must use their own set, numbers must run 1..N, and images must
+// not be served from raw.githubusercontent (unreachable in some networks).
+const SHIPPED_IMAGES = [...entries.keys()]
+	.filter((n) => n.startsWith('package/docs/images/'))
+	.map((n) => path.basename(n));
+for (const file of ['README.md', 'README.en.md'].filter((f) => fs.existsSync(`${BUNDLE}/${f}`))) {
+	const english = file.includes('.en.');
+	const text = fs.readFileSync(`${BUNDLE}/${file}`, 'utf8');
+	const refs = [...text.matchAll(/docs\/images\/([A-Za-z0-9._-]+\.(?:png|gif|jpe?g|webp|svg))/g)].map((m) => m[1]);
+	const missing = [...new Set(refs.filter((name) => !SHIPPED_IMAGES.includes(name)))];
+	check(`${file}: every image reference ships`, missing.length === 0, missing.join(', ') || `${refs.length} refs`);
+	const wrongLocale = [...new Set(refs.filter((name) => /-en\./.test(name) !== english))];
+	check(`${file}: images match the locale`, wrongLocale.length === 0, wrongLocale.join(', ') || 'zh/en split ok');
+	const rawGithub = [...new Set([...text.matchAll(/raw\.githubusercontent\.com\/[^)\s]+/g)].map((m) => m[0]))];
+	check(`${file}: images not served from raw.githubusercontent`, rawGithub.length === 0, rawGithub[0] ?? 'jsdelivr');
+	const nums = [...new Set(refs.map((n) => Number((n.match(/^(\d\d)-/) ?? [])[1])).filter((n) => Number.isFinite(n)))].sort((a, b) => a - b);
+	check(`${file}: image numbers run 1..N`, nums.every((n, i) => n === i + 1), nums.join(',') || 'none');
+}
+const shotList = JSON.parse(fs.readFileSync(`${BUNDLE}/screenshots.json`, 'utf8')).screenshots ?? [];
+const shotMissing = shotList.filter((p) => !SHIPPED_IMAGES.includes(path.basename(p)));
+check('screenshots.json lists shipped images', shotMissing.length === 0, shotMissing.join(', ') || `${shotList.length} entries`);
+
+// --- 6. changelog present -------------------------------------------------
 check('aggregated CHANGELOG present', fs.existsSync(`${BUNDLE}/CHANGELOG.md`));
 
 console.log(`\n${failures === 0 ? 'ALL ARTEFACT CHECKS PASSED' : failures + ' CHECK(S) FAILED'}`);
