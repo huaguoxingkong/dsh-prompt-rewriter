@@ -32,6 +32,8 @@ A one-line draft is missing **goal, format, and boundaries**. The model can only
 
 The third column is not something you wrote. It read your sentence and filled it in. **And it stays editable** — it lands in the composer, not somewhere else.
 
+It also fixes two long-standing annoyances: **it never asks you a question back** (if the model slips one into the rewrite, the question is dropped and the rewrite kept; if the whole reply is a question it re-runs on the legacy rules, and failing that keeps your draft), and **the rule set is swappable** (Legacy / Intent-first / WorkBuddy, one row in settings — same button, same steps).
+
 ## How to use it
 
 1. Type any draft in the composer — shorter is fine.
@@ -40,6 +42,8 @@ The third column is not something you wrote. It read your sentence and filled it
 4. Not what you wanted? `Ctrl+Z`, or click the undo arrow the button turned into.
 
 Changed your mind mid-flight? Click again to cancel. The draft stays exactly as it was — no half-finished text left behind.
+
+How hard it rewrites is the *Enhancement rule set* in settings: **Legacy** (default) matches 1.7.1, **Intent-first** fills in more, **WorkBuddy** uses its original prompt. Switching rules changes neither the button nor the steps.
 
 ### For faster results, pick a stable model
 
@@ -86,7 +90,7 @@ Turn it on at **Settings → Prompt Enhance → Shortcut**. Desktop uses `Ctrl+E
 | Done | turns into an undo arrow | one click back, or `Ctrl+Z` |
 | Failed | red retry icon + reason | the reason sits right next to it — no log hunting |
 
-## Two things worth not confusing
+## Three things worth not confusing
 
 ### 1. Whether it reads the conversation
 
@@ -104,6 +108,10 @@ Conversation context costs tokens. If long chats feel slow or expensive, turn of
 ### 2. Whether it reads images
 
 Only images **currently sitting in the composer** — **never images from earlier messages**. That line is deliberate: old pasted screenshots are slow to process and easy to misread, so they're out of scope.
+
+### 3. Whether it reads attachments
+
+Only **non-image attachments currently in the composer** — attachments from earlier turns are never read. The cap is **2 files per run, 5 MiB each**; text-like files send at most the first 6,000 characters as a preview. With *Reference attachment content* off, it sends up to 8 file names and no content.
 
 ## Settings
 
@@ -165,6 +173,10 @@ Download the zip from [Releases](https://github.com/huaguoxingkong/dsh-prompt-re
 
 **Does it change messages I already sent?** No. It only edits the draft, and it never sends.
 
+**Will it ask me a question back?** Not in the result. None of the three rule sets answers the request itself; Legacy and Intent-first forbid asking outright, and WorkBuddy's own text only forbids answering it — so any question it does emit is dropped by the plugin. If the whole reply is a question it re-runs on the legacy rules, and failing that keeps your draft.
+
+**Do my attachments get sent?** Only with *Reference attachment content* on: at most 2 non-image attachments from the composer, 5 MiB each, and text-like files send the first 6,000 characters only. Turn it off and only the file names go out.
+
 ## Configuration
 
 Every `config` key on the profile plugin line is optional. The first eight are managed by the settings page; the last seven are operational ceilings and are not exposed in the UI.
@@ -197,10 +209,10 @@ Every `config` key on the profile plugin line is optional. The first eight are m
 
 | Half | File | Responsibility |
 |---|---|---|
-| Host | `index.js` | Registers `POST /api/prompt-enhance` (rewrite) and `GET/POST /api/prompt-enhance/settings`, through `ctx.connection.fetch` so it inherits Harness auth and origin checks. Reads the session projection for the current model, then generates via `ctx.llm`. |
+| Host | `index.js` | Registers `POST /api/prompt-enhance` (rewrite) and `GET/POST /api/prompt-enhance/settings`, through `ctx.connection.fetch` so it inherits Harness auth and origin checks. Reads the session projection for the current model, picks the rule set from settings (`legacy-rules.mjs` / `intent-first-rules.mjs` / `workbuddy-rules.mjs`), turns composer attachments into reference material, then generates via `ctx.llm`. |
 | Client | `client.js` | Renders the button at `conversation.input.right` and the settings page at `settings.section`. Replaces the draft in place via `inputActions.insertText`. |
 
-Three designs worth calling out:
+A few designs worth calling out:
 
 - **Context is budgeted**: injected history is `min(historyTokenBudget, contextWindow × 5%)`, collected newest-first. When a single message exceeds the whole budget, its target length is computed in one proportional step (with up to 4 correction passes for rounding and mixed-script error), then truncated rather than dropped — so "has context" never silently degrades into "no context".
 - **The output budget grows on demand**: a reasoning model shares one output budget between thinking and answering, so a long draft can spend it all on reasoning and leave nothing for the reply. When the run is cut off by that budget, the plugin doubles it and retries (3500 → 7000 → 14000, capped by the model's declared maximum and never above 16000) instead of misreporting truncation as "the model returned nothing".
@@ -212,6 +224,8 @@ Three designs worth calling out:
 - Images from earlier messages never take part (by design; composer images only).
 - Replacement is non-streaming: the button shows its animated state until the rewrite lands.
 - The settings dropdown depends on the Host's `remote.session.modelCatalog`. When that surface is unavailable it says so explicitly rather than rendering an empty list.
+- Attachments are composer-only: files from earlier turns never take part, and a run reads at most 2 files of 5 MiB each.
+- The WorkBuddy rule set has no verbatim-fidelity clause, so long drafts get compressed toward its ~800-character ceiling.
 
 ## Development
 
