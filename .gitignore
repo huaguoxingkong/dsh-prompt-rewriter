@@ -1,21 +1,14 @@
-# Dependencies (never publish a local link or a vendored copy)
+# 依赖与构建产物
 node_modules/
-package-lock.json
-pnpm-lock.yaml
-yarn.lock
+dist/
+.gate/
+*.tgz
 
-# Development scratch
-_tmp*
-*.bak
-*.bak-*
-*.log
-_audit/
-_shots/
-_release/
-
-# Editor / OS noise
+# 编辑器 / 系统噪音
 .DS_Store
 Thumbs.db
-.vscode/
-.idea/
-*.swp
+*.log
+
+# 临时备份（历史遗留的改写前副本）
+*.bak
+*.bak-*

@@ -1,0 +1,67 @@
+{
+  "note": "固定草稿集：改前/改后跑同一组，按两维评估——意图保真（要求有无增减、字面 token 是否存活）与执行效果（交给模型跑一遍看结果）。core 为必跑，special 为图片/历史专项。",
+  "groups": {
+    "core": "必跑 6 条：覆盖短草稿、含字面 token、模糊需求、复杂草稿、已清晰草稿、极稀疏草稿",
+    "special": "可选 2 条：验证图片与会话历史通道"
+  },
+  "drafts": [
+    {
+      "id": "short-command",
+      "group": "core",
+      "label": "短命令式",
+      "tests": "是否消歧并接地；会不会扩成模板、会不会直接执行草稿",
+      "draft": "把这两个输入法删了"
+    },
+    {
+      "id": "with-code",
+      "group": "core",
+      "label": "含代码与 @ 引用",
+      "tests": "@D:\\projects\\api\\server.ts、报错原文是否逐字保留；任务范围是否被擅自扩大",
+      "draft": "帮我看下这个报错 @D:\\projects\\api\\server.ts\n\nTypeError: Cannot read properties of undefined\n  at getUser (server.ts:42:18)\n\n应该是数据库查回来是空的"
+    },
+    {
+      "id": "mixed-lang",
+      "group": "core",
+      "label": "中英混合 + 模糊需求",
+      "tests": "语言是否保持；「更高级」这类模糊词是否被消歧而非补成模板",
+      "draft": "make the landing page 更高级一点，参考 example.com，但不要太花"
+    },
+    {
+      "id": "complex",
+      "group": "core",
+      "label": "复杂草稿（信息已充足）",
+      "tests": "是否逐字保留 6 条要求、不重排、不合并、不新增；只消解范围与冲突",
+      "draft": "帮我改一下这个项目的登录模块。现在用的是 session，想换成 JWT。要注意别把现在的接口搞坏，前端那边是 mobile 和 web 两个，都要能用。另外顺便看看有没有安全问题。哦对了数据库是 postgres，ORM 是 prisma，别换成别的。测试也要跑通。尽量快，我下午要用。"
+    },
+    {
+      "id": "already-clear",
+      "group": "core",
+      "label": "已清晰草稿",
+      "tests": "点击按钮仍应有可见改进（消歧/收口），但不得新增任何要求",
+      "draft": "用 Python 读取 D:\\data\\spectra.csv 的第 3 列，画一条波长 400-700nm 的折线图，横轴标 Wavelength (nm)，纵轴标 Intensity，保存为 D:\\data\\plot.png，不要显示窗口。"
+    },
+    {
+      "id": "sparse",
+      "group": "core",
+      "label": "极稀疏草稿（意图未成形）",
+      "tests": "是否给出一个具体可判断的意图候选，且带确认指令、不替用户定死",
+      "draft": "诺奖终稿.docx"
+    },
+    {
+      "id": "with-image",
+      "group": "special",
+      "label": "含图片",
+      "tests": "图有没有真的被读、被用作消歧素材",
+      "draft": "照这个界面把设置页的排版做一下",
+      "imageHint": "附一张设置页截图"
+    },
+    {
+      "id": "needs-history",
+      "group": "special",
+      "label": "依赖历史",
+      "tests": "历史是否用于消歧，且没有被堆进结果",
+      "draft": "那就按刚才说的第二种方案改",
+      "historyHint": "先在会话里聊两句、确认一个方案，再发这条"
+    }
+  ]
+}

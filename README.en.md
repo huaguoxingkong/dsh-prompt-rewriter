@@ -35,7 +35,7 @@ The third column is not something you wrote. It read your sentence and filled it
 ## How to use it
 
 1. Type any draft in the composer — shorter is fine.
-2. Click the **whale-tail icon just left of the model name**. It isn't there when the box is empty.
+2. Click the **whale-tail icon** in the right-hand control group of the composer (a small blue dot means it will use conversation context). It shares that group with the model picker and send button, and other plugins may add controls between them. It isn't there when the box is empty.
 3. A second later the draft is replaced with the rewritten prompt.
 4. Not what you wanted? `Ctrl+Z`, or click the undo arrow the button turned into.
 
@@ -107,21 +107,25 @@ Only images **currently sitting in the composer** — **never images from earlie
 
 ## Settings
 
-`Settings → Prompt Enhance`. Four switches and one dropdown, affecting **only this button, never normal sending**. The changelog sits at the bottom of the page.
+`Settings → Prompt Enhance`. Five switches, a model dropdown and a rule-set dropdown, affecting **only this button, never normal sending**. The changelog sits at the bottom of the page.
 
 ![Settings page](https://raw.githubusercontent.com/huaguoxingkong/dsh-prompt-rewriter/main/docs/images/03-settings-en.png)
 
 | Option | Default | What turning it on does |
 |---|---|---|
 | Use a fixed model | Off | Off: follow the model of the current conversation. On: always use the model picked below. |
+| Enhancement rule set | **Legacy (stable)** | Three choices: **Legacy** ships the 1.7.1 playbook verbatim (15 rows, 10 of them rules; about 1.2–3× the draft); **intent-first** works out what the user actually wants, then writes it out more clearly and more completely (the six dimensions are covered wherever the task needs them: goal / inputs / scope / method / output / quality bar; where the draft is silent the executor is told to decide and state its assumption; a sparse draft usually grows to 2–5× its length, never beyond 5×); **WorkBuddy** uses its shipped prompt verbatim (analyse objective, ambiguity, clarity and missing context, then rewrite against its seven principles; the cap is around 800 characters and this set has no verbatim-fact clause, so long drafts get compressed). |None of them answer the request itself; legacy and intent-first explicitly forbid asking the user, and any question WorkBuddy returns is dropped by the plugin. |
 | Reference the conversation | **On** | Read earlier turns. More accurate, but extra tokens and slower on long chats. |
 | Reference composer images | Off | Images in the composer take part. Earlier messages' images are never read. |
+| Reference attachment contents | **On** | On: reads up to 2 non-image files from the composer, up to 5 MiB each; text files send a preview capped at 6,000 characters. Off: file contents are not read or sent; up to 8 filenames may be included as context. |
 | Shortcut | Off | Lets the keyboard trigger a rewrite. Off by default, so no global key fires unasked. |
 
 - The model dropdown lists **the providers and models you actually have** — you can't type in one that doesn't exist.
 - Turning the model switch off does not clear your selection; flipping it back on shows the same choice.
-- Images still uploading are skipped, and the status area tells you how many were missed. A rewrite never fails because of an image.
+- Images still uploading or over the Host attachment service's per-image or per-message limit are skipped; the status area reports how many were missed. A rewrite never fails because of an image.
+- Files over the count or size limit are skipped and reported in the result status.
 - The **current version** sits in the top-right of the settings page; clicking it opens the project home page. Check it before reporting a problem — it makes the issue much easier to pin down.
+- The first row is the entry point: "Star ⭐ · problems? open an issue ↗", leading to the project home page and this project's issue list.
 - The **changelog** at the bottom folds by version, newest open by default; it is read from the shipped `CHANGELOG.md`, so it works offline.
 
 ## Install
@@ -163,7 +167,7 @@ Download the zip from [Releases](https://github.com/huaguoxingkong/dsh-prompt-re
 
 ## Configuration
 
-Every `config` key on the profile plugin line is optional. The first six are managed by the settings page; the last seven are operational ceilings and are not exposed in the UI.
+Every `config` key on the profile plugin line is optional. The first eight are managed by the settings page; the last seven are operational ceilings and are not exposed in the UI.
 
 ```yaml
 - id: dsh-prompt-rewriter
@@ -173,7 +177,9 @@ Every `config` key on the profile plugin line is optional. The first six are man
     useCustomModel: false      # pin enhanceProvider/enhanceModel
     enhanceProvider: ""        # empty = follow the session model
     enhanceModel: ""
+    ruleSet: legacy            # enhancement rule set: legacy / intent-first / workbuddy
     referenceImages: false     # read composer images
+    referenceFiles: true       # read composer file contents
     referenceContext: true     # read earlier turns
     shortcutEnabled: false     # keyboard shortcut (off by default)
 
@@ -209,7 +215,14 @@ Three designs worth calling out:
 
 ## Development
 
-The plugin has a Host half and a Client half. The Host depends only on host services such as `ctx.connection`, `ctx.llm` and `ctx.settings`; the Client registers slot components through `window.__ModuleLoader__`. Both halves load with the bundle at startup, so changes require a restart to verify.
+The plugin has a Host half and a Client half. The Host depends only on host services such as `ctx.connection`, `ctx.llm` and `ctx.settings`; the Client registers slot components through `window.__ModuleLoader__`. **The two halves load differently, so they are verified differently**:
+
+| What changed | How it takes effect | Host restart |
+| --- | --- | --- |
+| `client.js` (button, interaction, wording, styles) | Client HMR polls each front-end bundle every 500 ms and pushes the change over `/plugins/events`; the open window swaps that plugin entry in place | Not needed; refreshing the window is only a fallback |
+| `index.js`, `*-rules.mjs` (enhancement route, prompt rules, settings storage) | Imported once when the Host starts | Required |
+
+Client HMR comes from `@deepseek-ai/dsh-client-hmr`, which the Web composition always mounts. It is not the Host's `hmr`: this machine's profile sets the Host `hmr` to `disabled: true` (see the note in `cordis.patch.yml`), so Host **code** is not hot-reloaded. Settings changed in the UI still take effect immediately (they go through the settings service, not file watching); editing `cordis.patch.yml` by hand is what needs a restart.
 
 **Unit tests are not published with this repository.** Development-time tests depend on the host's private `@deepseek-ai/schemastery`, a copy of the host's React, and this machine's profile layout — publishing them would hand users files that cannot run.
 

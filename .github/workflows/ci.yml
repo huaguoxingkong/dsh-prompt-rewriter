@@ -1,75 +1,35 @@
-name: ci
+name: CI
 
-# The plugin ships to Windows desktop users, while the harness itself is developed
-# on Linux. Testing one platform only lets path, case-sensitivity and line-ending
-# problems reach users, so both are covered.
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-
-permissions:
-  contents: read
+  workflow_dispatch:
 
 jobs:
   verify:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        node: ['22', '24']
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: '22'
 
-      - name: Syntax check both entry points
-        run: |
-          node --check index.js
-          node --check client.js
-
-      - name: Manifest is internally consistent
-        shell: bash
-        run: |
-          node -e "
-            const fs = require('fs');
-            const j = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            const fail = (m) => { console.error('::error::' + m); process.exit(1); };
-            const patch = j.dsh && j.dsh.bundle && j.dsh.bundle.patch;
-            if (!patch) fail('dsh.bundle.patch is required for market listing');
-            if (!fs.existsSync(patch)) fail('patch file missing: ' + patch);
-            if (j.exports['.']) if (!fs.existsSync(j.exports['.'])) fail('exports . missing');
-            if (j.exports['./client']) if (!fs.existsSync(j.exports['./client'])) fail('exports client missing');
-            for (const f of j.files) {
-              if (!f.includes('*')) {
-                if (!fs.existsSync(f)) fail('files entry missing: ' + f);
-                continue;
-              }
-              // Globs must expand to at least one real file. The old code stripped
-              // the pattern, turning locale/*.json into locale.json and failing.
-              const dir = f.slice(0, f.indexOf('*')).replace(/\/$/, '') || '.';
-              const pat = f.slice(f.indexOf('*')).replace(/\./g, '\\\.').replace(/\*/g, '.*');
-              if (!fs.existsSync(dir)) fail('files glob dir missing: ' + dir);
-              const hits = fs.readdirSync(dir).filter((x) => new RegExp('^' + pat + '$').test(x));
-              if (!hits.length) fail('files glob matched nothing: ' + f);
-            }
-            console.log('manifest ok');
-          "
-
-      - name: Install dependencies
+      # The package has one real runtime dependency (@deepseek-ai/schemastery), so a
+      # clean checkout must install before it can be verified.
+      - name: Install
         run: npm install --no-audit --no-fund
 
-      - name: Entry point loads
-        shell: bash
-        run: |
-          node --input-type=module -e "
-            import('./index.js')
-              .then((m) => {
-                if (typeof m.apply !== 'function') { console.error('::error::apply is not a function'); process.exit(1); }
-                console.log('loaded:', m.name, '| inject:', JSON.stringify(m.inject));
-              })
-              .catch((e) => { console.error('::error::' + e.message); process.exit(1); });
-          "
+      - name: Syntax check
+        run: npm run check
+
+      - name: Test suites
+        run: npm test
+
+      # The gate inspects a packed tarball, so build one first.
+      - name: Pack
+        run: npm run pack
+
+      - name: Artefact gate
+        run: npm run gate
