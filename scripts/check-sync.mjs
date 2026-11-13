@@ -3,7 +3,9 @@
 // tarball), on GitHub's default branch, and in the release asset. The 1.8.3 cycle
 // shipped a release with no zip and a README whose image names had moved; the
 // package gate cannot see either, so run this after every publish:
-//   node scripts/check-sync.mjs --token $GH_TOKEN
+//   node scripts/check-sync.mjs --token $GH_TOKEN [--proxy http://127.0.0.1:7897]
+// Add --proxy when release-asset downloads time out: api.github.com may answer
+// directly while the release CDN does not.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,6 +24,9 @@ const REF = arg('ref', 'main');
 const REGISTRY = arg('registry', 'https://registry.npmjs.org');
 const TOKEN = arg('token', process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '');
 const DOCS = ['README.md', 'README.en.md', 'CHANGELOG.md', 'screenshots.json'];
+// Release assets live on a different host than the API; route them through curl
+// when a proxy is supplied, since node's fetch ignores HTTPS_PROXY.
+const PROXY = arg('proxy', process.env.HTTPS_PROXY || process.env.https_proxy || '');
 
 let failures = 0;
 const check = (name, ok, detail) => {
@@ -43,6 +48,18 @@ async function fetchBuf(url, headers, tries) {
 		await sleep(600);
 	}
 }
+function curlToBuffer(url) {
+	const out = path.join(os.tmpdir(), 'dsh-sync-' + crypto.randomBytes(6).toString('hex'));
+	try {
+		execFileSync('curl', ['-sSL', '--max-time', '180', '-x', PROXY, '-o', out, url], { stdio: 'pipe' });
+		return fs.readFileSync(out);
+	} catch (err) {
+		return { error: 'curl ' + String(err.status ?? 'failed') };
+	} finally {
+		fs.rmSync(out, { force: true });
+	}
+}
+const fetchAsset = async (url) => (PROXY ? curlToBuffer(url) : fetchBuf(url, { 'User-Agent': 'dsh-check-sync', Accept: 'application/octet-stream' }, 4));
 const ghRaw = () => Object.assign({ Accept: 'application/vnd.github.raw', 'User-Agent': 'dsh-check-sync' }, TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {});
 const ghJson = () => Object.assign({ Accept: 'application/vnd.github+json', 'User-Agent': 'dsh-check-sync' }, TOKEN ? { Authorization: 'Bearer ' + TOKEN } : {});
 const ghApi = (p) => 'https://api.github.com/repos/' + REPO + '/' + p;
@@ -95,8 +112,14 @@ const main = async () => {
 		check('release ' + tag + ' carries ' + zipName, Boolean(asset), asset ? asset.size + ' B' : 'missing');
 		const localZip = path.join(BUNDLE, 'dist', zipName);
 		if (asset && fs.existsSync(localZip)) {
-			const dl = await fetchBuf(asset.browser_download_url, { 'User-Agent': 'dsh-check-sync', Accept: 'application/octet-stream' });
-			check('release zip == local zip', Buffer.isBuffer(dl) && sha(dl) === sha(fs.readFileSync(localZip)), sha(fs.readFileSync(localZip)));
+			const dl = await fetchAsset(asset.browser_download_url);
+			// A flaky download and a real mismatch must not look alike: report the reason.
+			if (!Buffer.isBuffer(dl)) {
+				check('release zip == local zip', false, 'download failed ' + JSON.stringify(dl));
+			} else {
+				const want = sha(fs.readFileSync(localZip));
+				check('release zip == local zip', sha(dl) === want, sha(dl) === want ? want : sha(dl) + ' vs ' + want);
+			}
 		}
 		check('release body is not empty', Boolean((release.body || '').trim()), String((release.body || '').length) + ' chars');
 	}
