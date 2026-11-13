@@ -1,0 +1,47 @@
+name: Bug 报告
+description: 插件行为异常、报错或界面问题
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请确认：插件已是最新版本（npm 上的 latest），并重启过 Harness —— 宿主侧改动需要重启才生效。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象
+      description: 实际发生了什么？你期望的是什么？
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 在输入框写下草稿 …
+        2. 点鲸尾图标 …
+        3. 出现 …
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: 版本
+      description: Harness 版本 / 插件版本 / 操作系统
+      placeholder: "DSH 0.2.x · dsh-prompt-rewriter 1.8.3 · Windows 11"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 控制台报错、状态区提示、截图都行；没有就写「无」
+    validations:
+      required: false
+  - type: input
+    id: neighbours
+    attributes:
+      label: 输入栏还装了哪些插件
+      description: 同一槽位（conversation.input.*）的第三方控件可能与按钮位置冲突（见 #4）
+    validations:
+      required: false
