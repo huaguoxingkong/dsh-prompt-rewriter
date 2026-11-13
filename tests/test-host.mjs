@@ -1527,7 +1527,9 @@ await test('settings exposes the shipped changelog as Chinese-only published ver
 	assert.equal(body.ok, true);
 	assert.ok(Array.isArray(body.changelog), 'changelog is an array');
 	assert.ok(body.changelog.length >= 11, 'all shipped releases are listed');
-	assert.equal(body.changelog[0].version, '1.8.0', 'newest first');
+	// Derived from the manifest: a release bumps package.json, not this test.
+	const shipped = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+	assert.equal(body.changelog[0].version, shipped.version, 'newest first');
 	for (const entry of body.changelog) {
 		assert.match(entry.version, /^\d+\.\d+\.\d+$/u, 'published versions only');
 		assert.ok(entry.items.length > 0, 'each version has Chinese entries');

@@ -12,3 +12,6 @@ Thumbs.db
 # 临时备份（历史遗留的改写前副本）
 *.bak
 *.bak-*
+
+# 发布产物不入库（releases 附件 / npm 包）
+*.zip
