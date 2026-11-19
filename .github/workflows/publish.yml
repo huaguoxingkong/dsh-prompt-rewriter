@@ -96,11 +96,10 @@ jobs:
         run: |
           name="$(node -p "require('./package.json').name")"
           version="$(node -p "require('./package.json').version")"
-          gh release create "${GITHUB_REF_NAME}" \
+          gh release create "${GITHUB_REF_NAME}" "dist/${name}-${version}.zip" \
             --verify-tag \
             --title "${GITHUB_REF_NAME}" \
-            --notes-file release-body.md \
-            --attach "dist/${name}-${version}.zip"
+            --notes-file release-body.md
 
       - name: Verify both channels agree
         env:
