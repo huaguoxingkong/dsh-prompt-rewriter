@@ -777,6 +777,10 @@ window.__ModuleLoader__.load({
 			const attachmentIds = useInput((state) => state.attachmentIds);
 			// Reference chips (files / links) from the same snapshot as `draft`.
 			const occurrences = useInput((state) => state.occurrences);
+			// A claimed command (`/plan `) is editable: the host freezes only
+			// `adjudicating | submitting | sending`. Reading the token here keeps the seat
+			// visible while a command chip is present and lets the planner protect it.
+			const claimToken = useInput((state) => state.claim?.token);
 			// Task state lives in the module-level registry, keyed by session, so it
 			// outlives this component instance. Switching sessions only changes which
 			// entry is read; it never cancels work.
@@ -853,6 +857,8 @@ window.__ModuleLoader__.load({
 			// Keep the chip list current without re-creating the writer on every render.
 			const occurrencesRef = useRef(occurrences);
 			occurrencesRef.current = occurrences;
+			const claimTokenRef = useRef(claimToken);
+			claimTokenRef.current = claimToken;
 			// The composer phase decides whether a write can land at all: 'adjudicating',
 			// 'submitting' and 'sending' freeze the editor, and insertText answers false
 			// for every span while frozen. Read through a ref so the delivery path sees
@@ -870,7 +876,7 @@ window.__ModuleLoader__.load({
 				(text, before, rev) => {
 					if (inputActions === undefined || typeof inputActions.insertText !== 'function') return false;
 					const clean = sanitizeForInsert(text);
-					const plan = planDraftReplacement(before, occurrencesRef.current);
+					const plan = planDraftReplacement(before, occurrencesRef.current, claimTokenRef.current);
 					if (plan.segments.length === 0) return false;
 					// Back to front: editing a later run cannot move an earlier run's
 					// detect offsets. Each successful insert bumps the host revision, so
@@ -883,6 +889,8 @@ window.__ModuleLoader__.load({
 					// setDraft would drop them.
 					const writeWhole = () => {
 						if (plan.segments.length !== 1 || occurrencesRef.current.length > 0) return false;
+						// setDraft writes the text alone; a command chip would be dropped.
+						if (claimTokenRef.current !== undefined && claimTokenRef.current !== null) return false;
 						if (typeof inputActions.setDraft !== 'function') return false;
 						inputActions.setDraft(clean);
 						return true;
@@ -957,8 +965,16 @@ window.__ModuleLoader__.load({
 		}
 
 		/** Draft as the MODEL should see it: chips become short, path-free markers. */
-		function draftForModel(before, occurrences) {
+		function draftForModel(before, occurrences, commandToken) {
 			let text = before;
+			// The command chip is composer structure, not prompt text: keep it out of
+			// the model input so a rewrite cannot duplicate or reword it.
+			const commandSpelling = typeof commandToken === 'string'
+				? commandToken.replace(/[\s\u3000]+$/u, '')
+				: '';
+			if (commandSpelling !== '' && text.startsWith(commandSpelling)) {
+				text = text.slice(commandSpelling.length).replace(/^[\s\u3000]+/u, '');
+			}
 			const entries = chipEntries(before, occurrences);
 			for (let i = entries.length - 1; i >= 0; i -= 1) {
 				const entry = entries[i];
@@ -998,13 +1014,27 @@ window.__ModuleLoader__.load({
 		 * @param occurrences - chip projections from the same composer snapshot.
 		 * @returns text runs to replace, and the detect end of the document.
 		 */
-		function planDraftReplacement(before, occurrences) {
+		function planDraftReplacement(before, occurrences, commandToken) {
 			const chips = (Array.isArray(occurrences) ? occurrences.slice() : [])
 				.filter((o) => o !== null && typeof o === 'object'
 					&& Number.isFinite(o.offset) && Number.isFinite(o.length))
 				.sort((a, b) => a.offset - b.offset);
+			// A claimed command is a chip at offset 0: the draft text starts with its
+			// spelling (token minus the trailing separator), and detect renders the chip
+			// as one character followed by that separator. Protecting the pair keeps
+			// `/plan` a command when the rewrite spans the whole draft.
+			const commandSpelling = typeof commandToken === 'string'
+				? commandToken.replace(/[\s\u3000]+$/u, '')
+				: '';
+			const commandSeparator = commandSpelling !== '' && typeof commandToken === 'string'
+				? commandToken.length - commandSpelling.length
+				: 0;
 			let shift = 0;
 			const chipSpans = [];
+			if (commandSpelling !== '' && before.startsWith(commandSpelling)) {
+				chipSpans.push({ start: 0, end: 1 + commandSeparator });
+				shift += Math.max(0, commandSpelling.length - 1);
+			}
 			for (const chip of chips) {
 				const labelLength = typeof chip.clipboardText === 'string'
 					? chip.clipboardText.length
@@ -1351,7 +1381,7 @@ window.__ModuleLoader__.load({
 							method: 'POST',
 							credentials: 'same-origin',
 							headers: { 'content-type': 'application/json' },
-							body: JSON.stringify({ sessionId, draft: draftForModel(before, occurrencesRef.current), images: collected.images, files: collectedFiles.files, clientFilesSkipped: collectedFiles.skipped }),
+							body: JSON.stringify({ sessionId, draft: draftForModel(before, occurrencesRef.current, claimTokenRef.current), images: collected.images, files: collectedFiles.files, clientFilesSkipped: collectedFiles.skipped }),
 							signal: controller.signal,
 						});
 						if (!response.ok) throw new Error(t('state.transport', { status: response.status }));
@@ -1476,7 +1506,7 @@ window.__ModuleLoader__.load({
 					// A frozen composer ('adjudicating' / 'submitting' / 'sending') answers
 					// false to every span while it is frozen. That is timing, not a refusal:
 					// park the result and let the pending effect deliver it on 'plain'.
-					if (phaseRef.current !== 'plain') return 'waiting';
+					if (phaseRef.current !== 'plain' && phaseRef.current !== 'claimed') return 'waiting';
 					// The write must carry the CURRENT revision, never the captured one.
 					//
 					// Attaching a file or a link chip commits an editor edit that bumps the
@@ -1511,7 +1541,7 @@ window.__ModuleLoader__.load({
 				if (inputActions === undefined || typeof inputActions.insertText !== 'function') return;
 				// Re-run on every phase change but write only when the editor is idle; the
 				// result stays parked until then.
-				if (phaseRef.current !== 'plain') return;
+				if (phaseRef.current !== 'plain' && phaseRef.current !== 'claimed') return;
 				const { text, originRev } = pendingResult;
 				// Same reasoning as the live path: a remount invalidates originRev, so the
 				// unchanged draft is what authorises the write. The editor is addressed with
@@ -1565,7 +1595,9 @@ window.__ModuleLoader__.load({
 			// because a mark on a button that cannot do anything is just noise in the
 			// toolbar for every conversation that has history.
 			const visible = busy || canUndo || failure !== null || notice !== null || draft.trim().length > 0;
-			if (!visible || phase !== 'plain') return null;
+			// `claimed` is editable: the host freezes only adjudicating/submitting/sending.
+			const editable = phase === 'plain' || phase === 'claimed';
+			if (!visible || !editable) return null;
 
 			const mode = busy ? 'busy' : canUndo ? 'undo' : failure !== null ? 'error' : 'idle';
 			const baseTitle = busy

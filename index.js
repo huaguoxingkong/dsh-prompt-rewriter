@@ -1432,8 +1432,10 @@ function readChangelog() {
 				continue;
 			}
 			if (current === null) continue;
-			if (line === '**中文**') { chinese = true; continue; }
-			if (line === '**English**') { chinese = false; continue; }
+			// Language markers appear as `**中文**` in older files and as plain `中文`
+			// (or `## 中文`) after the changelog was synchronised with the release body.
+			if (line === '**中文**' || line === '中文' || line === '## 中文') { chinese = true; continue; }
+			if (line === '**English**' || line === 'English' || line === '## English') { chinese = false; continue; }
 			if (chinese && /^-\s+/u.test(line)) current.items.push(line.replace(/^-\s+/u, ''));
 		}
 	} catch {

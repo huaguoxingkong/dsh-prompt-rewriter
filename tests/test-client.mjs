@@ -375,9 +375,10 @@ function enhanceCalls() {
 let sessionCounter = 0;
 const nextSessionId = () => `s-${++sessionCounter}`;
 
-function makeHelpers({ draft = '做个图', draftRev = 3, phase = 'plain', attachmentIds = [], occurrences = [], sessionId } = {}) {
+function makeHelpers({ draft = '做个图', draftRev = 3, phase = 'plain', attachmentIds = [], occurrences = [], claim, sessionId } = {}) {
 	const sid = sessionId ?? nextSessionId();
 	const state = { draft, draftRev, phase, attachmentIds, occurrences };
+	if (claim !== undefined) state.claim = claim;
 	const writes = [];
 	const useInput = (selector) => selector(state);
 	const inputActions = {
@@ -1959,6 +1960,42 @@ await test('a chip-only draft inserts the rewrite after the attachments', async 
 	assert.equal(helper.writes[0].span.start, detectEnd);
 	assert.equal(helper.writes[0].span.end, detectEnd, 'collapsed, so no chip is replaced');
 	assert.equal(helper.writes[0].text, '改写结果');
+});
+
+// ---- Claimed commands: `claimed` is editable and the chip survives -------------
+const COMMAND_TOKEN = '/计划 ';
+const COMMAND_SPELLING = '/计划';
+
+await test('a claimed command keeps the seat visible', async () => {
+	// The host freezes only adjudicating/submitting/sending; `claimed` stays editable.
+	const registrations = installPlugin();
+	const helper = makeHelpers({ draft: COMMAND_TOKEN + '原始草稿', phase: 'claimed', claim: { name: 'plan', token: COMMAND_TOKEN } });
+	const mounted = mountComponent(composerRegistration(registrations).component, helper.props);
+	await sleep(0);
+	assert.notEqual(findButton(mounted.rerender().tree), undefined, 'the seat must render while a command is claimed');
+});
+
+await test('a claimed command is protected and the rewrite lands after it', async () => {
+	const tail = '原始草稿';
+	const draft = COMMAND_TOKEN + tail;
+	const helper = makeHelpers({ draft, phase: 'claimed', claim: { name: 'plan', token: COMMAND_TOKEN } });
+	await runRewrite(helper);
+	assert.equal(helper.writes.length, 1, 'the text run after the command is the only write');
+	const write = helper.writes[0];
+	// Detect renders the chip as one character plus the separator the draft keeps.
+	assert.equal(write.span.start, 2, 'the write starts after the chip and its separator');
+	assert.equal(write.span.end, draft.length - (COMMAND_SPELLING.length - 1), 'end is the DETECT length');
+	assert.equal(write.text, '改写结果');
+	assert.equal(write.span.start >= 2, true, 'no write may cover the command chip');
+});
+
+await test('a claimed command is never dropped by a whole-draft write', async () => {
+	const helper = makeHelpers({ draft: COMMAND_TOKEN + '原始草稿', phase: 'claimed', claim: { name: 'plan', token: COMMAND_TOKEN } });
+	const setDrafts = [];
+	helper.props.inputActions.setDraft = (text) => { setDrafts.push(text); };
+	await runRewrite(helper);
+	assert.equal(setDrafts.length, 0, 'setDraft would replace the chip with plain text');
+	assert.equal(helper.writes.length, 1, 'the ranged write still lands');
 });
 
 // ---- Attached files: no disk paths in the rewrite --------------------------

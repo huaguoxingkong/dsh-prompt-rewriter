@@ -1528,14 +1528,21 @@ await test('settings exposes the shipped changelog as Chinese-only published ver
 	assert.ok(Array.isArray(body.changelog), 'changelog is an array');
 	assert.ok(body.changelog.length >= 11, 'all shipped releases are listed');
 	// Derived from the manifest: a release bumps package.json, not this test.
+	// A dev line (`1.8.4-dev.1`) keeps the newest changelog entry at the last
+	// published release, so compare numerically instead of for equality; the entry
+	// must still never be NEWER than the manifest.
 	const shipped = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
-	assert.equal(body.changelog[0].version, shipped.version, 'newest first');
+	const parseVer = (v) => v.replace(/-.*$/u, '').split('.').map(Number);
+	const [maj, min, pat] = parseVer(shipped.version);
+	const [cMaj, cMin, cPat] = parseVer(body.changelog[0].version);
+	const notNewer = cMaj < maj || (cMaj === maj && (cMin < min || (cMin === min && cPat <= pat)));
+	assert.ok(notNewer, `newest changelog entry ${body.changelog[0].version} must not exceed ${shipped.version}`);
 	for (const entry of body.changelog) {
 		assert.match(entry.version, /^\d+\.\d+\.\d+$/u, 'published versions only');
 		assert.ok(entry.items.length > 0, 'each version has Chinese entries');
 	}
 	const text = body.changelog.flatMap((entry) => entry.items).join('\n');
-	assert.match(text, /快捷键服务不可用/u, 'Chinese entries are kept');
+	assert.match(text, /快捷键服务缺失时插件不再整体失效/u, 'Chinese entries are kept');
 	assert.match(text, /上传文件或链接后改写结果不再被拒绝/u, 'the 1.7.0 entry is present');
 	assert.equal(/The plugin no longer goes dormant/u.test(text), false, 'English blocks are skipped');
 });
