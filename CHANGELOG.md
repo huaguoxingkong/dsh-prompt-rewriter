@@ -1,139 +1,249 @@
 # 更新日志
 
-记录每个**已发布**版本对使用者可见的变化。插件内只维护中文条目；对外发布（GitHub Release / npm）的双语正文由发布方据此撰写，其中中文以本文件为准。
+记录每个已发布版本的变化。插件内只维护中文条目；对外发布（GitHub Release / npm）的双语正文按本文件生成，中文以本文件为准，英文按此翻译。
+
+## 1.8.4
+
+**中文**
+
+- 命令块存在时增强按钮不再消失：此前草稿以已领取的命令（如 `/计划`）开头时，输入态 `claimed` 被误当成冻结态，鲸鱼按钮渲染为 `null`；现在 `claimed` 与 `plain` 一并视为可编辑，按钮照常显示。（#8，感谢 @YuvuShine 报告并给出复现与修法）
+- 改写结果即时落地，不再等切会话：此前 `claimed` 下结果被存成「等待」，只发一条读屏提示，必须切到别的会话重建输入框才补投；现在 `claimed` 直接写入，与普通草稿一致。
+- 命令块不再被改写成普通文本：此前整段替换的区间从 0 开始，把命令 chip 覆盖成纯文本、命令随之失效；现在命令块与其分隔符作为受保护段参与分区，改写只落在命令参数之后，并禁止整段 `setDraft` 覆盖。
+
+**English**
+
+- The Enhance button no longer disappears when the draft starts with a claimed command (such as `/plan`): `claimed` used to be treated as a frozen state, so the whale button rendered as `null`; it is now editable like `plain`, and the button stays visible. (#8 — thanks to @YuvuShine for the report, the repro and the fix.)
+- The rewrite lands immediately instead of waiting for a session switch: under `claimed` the result used to be parked and only announced to screen readers, and the composer had to be rebuilt in another session before it was applied; it now writes directly, exactly like a plain draft.
+- The command chip is no longer downgraded to plain text: the whole-draft replacement used to start at offset 0 and overwrite the chip, silently disabling the command; the chip and its separator are now protected segments, the rewrite lands after the command argument, and a whole-draft `setDraft` write is refused while a chip is present.
 
 ## 1.8.3
 
-**中文**
+中文
 
-- **这是 1.7.1 之后的合并发布**：改动原本分在 1.8.0–1.8.2 三个开发版本里。这三个版本曾发到 npm、现已全部撤回，同名版本号不能再使用，所以内容并入本版，版本号从 1.7.1 直接到 1.8.3。
-- **增强规则可选**：设置页新增三套规则。**旧版**逐字沿用 1.7.1 发布的规则原文，手感与老版本一致；**意图优先**先推断你真正想干什么，再把话写明白、写全；**WorkBuddy** 逐字沿用 WorkBuddy 随包发布的原始提示词。三套都只调用一次模型，区别只在改写力度；每套的定位与取舍在设置页里可直接对照。
-- **输入框里的附件会被读取**：增强时可参考当前输入框中最多 2 个非图片附件（每个不超过 5 MiB；文本类发送 6000 字符预览），关闭开关后只读文件名、不读内容。图片参考的开关与行为不变。
-- **改写不再反问你**：模型若在改写旁边夹了问句，问句会被就地删掉、改写保留；若整条回复只有问句，会用旧版规则再跑一次；仍不行就保留原草稿——问句不会出现在结果里。
-- **修复：发送消息时点增强不再失败**：此前在改写进行中按了发送，输入框处于冻结态会拒绝写入，改写被丢弃并提示「输入框没有接受替换，草稿保持不变」；现在会等到输入框空闲后自动写入，并照常提供「回退」。
-- **修复：增强按钮被同槽位的第三方控件覆盖约 4px**（#4）：去掉了「右邻一定是宿主自己的模型触发器」这一负边距假设，改用不参与布局的 7px 视觉偏移。
-- **设置页顶部新增 Star 与 issue 入口**：第一行是「点个 Star ⭐ · 遇到问题？提 issue ↗」，整行沿用次要色与 13px 字号，只有行尾的 ⭐ 自带颜色；点开分别到仓库与 issue 列表，版本号仍在右侧，不新增设置项。
-- **文档：两半的加载方式写明**——只改客户端（按钮、交互、提示文案）由 Harness 的 client HMR 自动替换，不必重启；宿主侧（增强接口与提示词规则）改动仍需重启一次。
-- **文档与截图**：设置页截图按本版界面重出（中英各一张，2 倍图）；README 新增「它读不读附件」一节，补上「不会反问你」「规则版本可换」、常见问题两条、工作原理与已知限制各两条，中英同步；README 里「单元测试未随本仓库发布」这句不实说法改成「不随 npm 包发布」，并补上发布前必跑的 `node scripts/gate.mjs`。
-- **README 图片换地址并按出现顺序重新编号**：图片改用 jsDelivr 上的包内地址（`cdn.jsdelivr.net/npm/dsh-prompt-rewriter/docs/images/...`），跟着最新发布版本走，不再受仓库分支内容或 GitHub 可达性影响；文件名重编为 `01-hero`、`02-button-states`、`03-context-modes`、`04-settings`（中英各一套），原来的 `01 → 03 → 04 → 05` 空号消除，`screenshots.json` 同步更新。
+- 这是 1.7.1 之后的合并发布：改动原本分在 1.8.0–1.8.2 三个开发版本里。这三个版本曾发到 npm、现已全部撤回，同名版本号不能再使用，所以内容并入本版，版本号从 1.7.1 直接到 1.8.3。
+- 增强规则可选：设置页新增三套规则——旧版（逐字沿用 1.7.1 的规则原文）、意图优先（先推断真实意图再写全）、WorkBuddy（沿用其原始提示词）。三套都只调用一次模型，区别只在改写力度。
+- 输入框里的附件会被读取：最多 2 个非图片附件、每个不超过 5 MiB，文本类发送 6000 字符预览；关闭开关后只读文件名。
+- 改写不再反问你：夹在改写旁的问句会被就地删掉；整条只有问句时用旧版规则重跑，仍不行就保留原草稿。
+- 修复：发送消息时点增强不再失败：输入框冻结时会等到空闲再写入，并照常提供回退。
+- 修复：增强按钮被同槽位第三方控件覆盖约 4px（#4）：改用不参与布局的 7px 视觉偏移。
+- 设置页顶部新增 Star 与 issue 入口：版本号仍在右侧，不新增设置项。
+- 文档：两半的加载方式写明：只改客户端由 client HMR 自动替换，不必重启；宿主侧改动仍需重启一次。
+- 文档与截图：设置页截图按本版界面重出（中英各一张，2 倍图）；README 补上附件、反问、规则版本、常见问题、工作原理与已知限制；「单元测试未随本仓库发布」改为「不随 npm 包发布」，并补上 `node scripts/gate.mjs`。
+- README 图片换地址并按出现顺序重新编号：改用 jsDelivr 包内地址，文件名重编为 `01-hero`、`02-button-states`、`03-context-modes`、`04-settings`（中英各一套），消除 `01 → 03 → 04 → 05` 空号。
+
+English
+
+- A merged release after 1.7.1. The work was split across three development builds, 1.8.0–1.8.2. All three were published to npm and have since been unpublished; those version numbers cannot be reused, so the content ships here as 1.8.3.
+- Selectable enhancement rule sets. Settings now offers three: Legacy (the 1.7.1 playbook verbatim), Intent-first (infers what you actually want, then writes it out fully), and WorkBuddy (its original prompt, unchanged). Each makes a single model call; only the rewriting strength differs.
+- Attachments in the composer are read. Up to 2 non-image attachments, 5 MiB each; text files contribute a 6000-character preview. Turn the switch off and only file names are used.
+- No more questions back. A question sitting next to a rewrite is stripped; if the whole reply is a question, the Legacy rules run once more, and the original draft is kept if that fails too.
+- Fixed: clicking enhance while sending no longer fails. A frozen composer is now waited on, and undo still works.
+- Fixed: the button was overlapped by ~4px by a third-party control in the same seat (#4). It now uses a 7px visual offset that takes no layout space.
+- Star and issue entries at the top of settings. The version stays on the right; no new setting was added.
+- Docs: how each half loads. Client-only changes hot-replace through client HMR without a restart; host-side changes still need one.
+- Docs and screenshots. The settings screenshot is re-shot for this UI in both languages at 2x. The README gains attachment, no-questions, rule-set, FAQ, how-it-works and known-limits sections. The false "unit tests are not published with this repository" line now reads "not published in the npm package", and `node scripts/gate.mjs` is documented as the pre-release gate.
+- README images moved and renumbered in reading order: `01-hero`, `02-button-states`, `03-context-modes`, `04-settings` (both languages), served from jsDelivr inside the package. The `01 → 03 → 04 → 05` gap is gone.
 
 ## 1.7.1
 
-**中文**
+中文
 
-- **OpenCode 渠道的增强请求不再返回 400**：此前请求没有把会话号透传给模型层，OpenCode 目标缺少 `x-opencode-session` 路由头，接口直接返回 `400 MissingSessionID`；现在会话号随请求一起下发，其余渠道的行为不变。（感谢 @xutiannuo 报告并给出修复方向）
+- OpenCode 渠道的增强请求不再返回 400：此前请求没有把会话号透传给模型层，OpenCode 目标缺少 `x-opencode-session` 路由头，接口直接返回 `400 MissingSessionID`；现在会话号随请求一起下发，其余渠道的行为不变。（感谢 @xutiannuo 报告并给出修复方向）
+
+English
+
+- Enhancement requests on OpenCode no longer return 400: the session id was not forwarded to the model layer, so OpenCode targets were missing the `x-opencode-session` routing header and the API answered `400 MissingSessionID`. It is now sent with the request; every other provider behaves exactly as before. (Thanks to @xutiannuo for the report and the fix direction.)
+
 ## 1.7.0
 
-**中文**
+中文
 
-- **上传文件或链接后改写结果不再被拒绝**：此前输入框里带有附件或链接时，经常出现「输入框没有接受替换，草稿保持不变」；现在按编辑器的实际坐标写入，改写正常落进输入框，附件引用也原样保留。
-- **增强结果不再出现附件的完整磁盘路径**：此前改写的提示词里会复制出 `@D:\...` 之类的地址；现在只保留可读的文件名，撤销操作也只恢复用户自己输入的文字。
-- **设置页新增更新日志**：按版本折叠展示各已发布版本的变化，默认展开最新版本，逐条列出；内容取自随包发布的本文件，与当前版本号保持一致。
+- 上传文件或链接后改写结果不再被拒绝：此前输入框里带有附件或链接时，经常出现「输入框没有接受替换，草稿保持不变」；现在按编辑器的实际坐标写入，改写正常落进输入框，附件引用也原样保留。
+- 增强结果不再出现附件的完整磁盘路径：此前改写的提示词里会复制出 `@D:\...` 之类的地址；现在只保留可读的文件名，撤销操作也只恢复用户自己输入的文字。
+- 设置页新增更新日志：按版本折叠展示各已发布版本的变化，默认展开最新版本，逐条列出；内容取自随包发布的本文件，与当前版本号保持一致。
+
+English
+
+- A rewrite is no longer refused after you attach a file or a link: when the composer held an attachment or a link, the rewrite often ended in "the composer did not accept the replacement, the draft is unchanged". It is now written at the editor's real coordinates, so it lands in the composer as usual and attachment references are preserved.
+- Enhanced prompts no longer carry an attachment's full disk path: the rewritten prompt used to copy out addresses like `@D:\...`. Only the readable file name is kept now, and undo restores only the text you typed yourself.
+- The settings page now ships a changelog: released versions fold open by version — the latest expanded by default, each entry shown line by line. The content is read from the CHANGELOG.md shipped with the package and stays in step with the current version.
 
 ## 1.6.3
 
-**中文**
+中文
 
-- 快捷键服务不可用时插件不再整体失效。此前宿主的快捷键服务若没有注册（例如与另一个锁定旧版客户端的插件共存），整个插件会保持休眠，输入框旁的按钮也随之消失；现在只有快捷键降级为不可用，改写按钮照常工作。
-- 快捷键服务晚于插件注册时也能读到当前绑定，不再把它显示成「未设置」或「不可用」。
+- 快捷键服务缺失时插件不再整体失效：此前宿主的快捷键服务若没有注册（例如与另一个锁定旧版客户端的插件共存），整个插件会保持休眠，输入框旁的按钮也随之消失。现在只有快捷键降级为不可用，改写按钮照常工作。
+- 快捷键服务晚注册也能读到绑定：服务在插件之后才注册时，设置页不再把它显示成「未设置」或「不可用」。
 
-**English**
+English
 
-- The plugin no longer goes dormant when the host's shortcut service is missing. Previously, if that service never registered — for example when another plugin pinned the client runtime to an older range — the whole plugin stayed inactive and the composer button disappeared with it. Only the shortcut degrades now; the Enhance button keeps working.
-- A shortcut service that registers after the plugin now resolves correctly, instead of being reported as unset or unavailable.
+- The plugin no longer goes dormant when the host's shortcut service is missing: if that service never registered — for example when another plugin pinned the client runtime to an older range — the whole plugin stayed inactive and the composer button disappeared with it. Only the shortcut degrades now; the Enhance button keeps working.
+- A service that registers late still resolves: the settings page no longer reports the binding as unset or unavailable when the service arrives after the plugin.
+
 ## 1.6.2
 
-**中文**
+中文
 
-- 增强进行中的鱼尾动效改用品牌蓝。此前它跟随按钮的文字色，深色主题下接近白色，与旁边的鱼形图标不同色。
-- 输入框里的图片读取更可靠：宿主服务取不到时改从输入框自身的通道取图；两处都无法回答时不再静默跳过，文字改写照常完成，状态区会告诉你少读了几张。
+- 螺旋鱼尾改用品牌蓝：增强进行中的鱼尾动效此前跟随按钮的文字色，深色主题下接近白色，与旁边的鱼形图标不同色。现在统一使用官方品牌蓝，待命与进行中两种状态看起来是同一个控件。
+- 输入框图片读取更可靠：宿主服务取不到时改从输入框自身的通道取图；两处都无法回答时不再静默跳过，文字改写照常完成，状态区会告诉你少读了几张。
 
-**English**
+English
 
-- The tail animation shown while an enhancement runs now uses the brand blue. It previously followed the button's text colour, which is near white in the dark theme and did not match the fish icon beside it.
+- The twisting tail now uses the brand blue: while an enhancement runs, the tail animation inherited the button's text colour, which is near white in the dark theme and did not match the fish icon beside it. It now uses the official brand blue, so the idle and running states read as one control.
 - Composer images are read more reliably: when the host service cannot answer, the composer's own channel is used instead; when neither can, the images are no longer skipped silently — the text-only rewrite still completes and the status area reports how many were missed.
+
+## 1.6.1
+
+中文
+
+- 本次为代码清理，没有功能变化：快捷键注册失败时的控制台输出与一条内部调试属性被移除，按钮、设置页与改写流程的行为与 1.6.0 完全一致。
+
+English
+
+- Code cleanup only, no functional change: the console message printed when shortcut registration fails and one internal debug attribute were removed. The button, the settings page and the rewrite flow behave exactly as in 1.6.0.
+
 ## 1.6.0
 
-**中文**
+中文
 
-- 新增键盘快捷键，可一键增强、运行中再按一次暂停；默认关闭，可在设置里打开、录制自定义键位或一键恢复默认。
-- 录入的键位若已被其它命令占用，会指出冲突的命令名且不生效，原有键位保持不变。
+- 键盘快捷键：现在可以用键盘触发提示词增强，不必再点图标。默认关闭，在「设置 → 提示词改写」打开后生效；桌面端为 `Ctrl+E`（macOS `Cmd+E`），浏览器端为 `Ctrl+Alt+E`（macOS `Cmd+Alt+E`）。
+- 键位可自定义：设置页可以录制自己的组合，也可以一键恢复默认。录入的组合若已被其它命令占用，会指出冲突的命令名且不生效，你原有的键位保持不变。
+- 与点击完全等价：快捷键走的是图标自身的点击入口，增强完成后同样可以再按一次撤销，不存在第二套逻辑。回退仍由按钮或 `Ctrl+Z` 负责。
+- 重启后仍然生效：键位通过 Harness 的快捷键机制注册，与内置快捷键共用同一套持久化。
 
-**English**
+English
 
-- Added a keyboard shortcut: press once to enhance, again to pause. Off by default; enable it in settings, record your own combination, or reset to the default.
-- A combination already taken by another command is reported with that command's name and is not applied; your previous binding stays.
+- Keyboard shortcut: trigger an enhancement from the keyboard instead of clicking the icon. Off by default; enable it under Settings → Prompt rewriter. `Ctrl+E` on desktop (`Cmd+E` on macOS) and `Ctrl+Alt+E` in the browser (`Cmd+Alt+E`).
+- Rebindable: record your own combination in Settings, or restore the default with one click. If a combination is already taken by another command, the row names the command it collides with, the combination is not applied, and your existing binding stays.
+- Same as clicking: the shortcut runs the icon's own click handler, so pressing it again after a finished enhancement undoes it, exactly like the icon. Restoring a draft stays on the button or `Ctrl+Z`.
+- Survives a restart: the binding is registered through Harness's shortcut service, so it persists across restarts.
 
 ## 1.5.1
 
-**中文**
+中文
 
-- 修正版本号链接指向的项目地址。
+- 设置页显示插件版本号：点一下在新标签页打开项目主页，不打断当前会话。遇到问题时先看一眼版本，反馈时更好定位。
+- 修复版本号链接指向错误地址：此前指向一个不存在的仓库，点击会打开 404。
+- 修复安装目录含空格时版本号读不出来：路径被解析成带 `%20` 的形式，读取失败且不报错，版本号那一行直接消失。
+- 设置文案精简：两条多层意思的提示各压缩到一句，并补上输入框上蓝点的含义说明。
 
-**English**
+English
 
-- Corrected the project address the version number links to.
-
-## 1.5.0
-
-**中文**
-
-- 设置页显示当前版本号，点击可打开项目主页。
-- 「参考之前的对话」旁补充说明，解释输入框上蓝点的含义。
-
-**English**
-
-- The settings page shows the current version; clicking it opens the project page.
-- The reference-context row now explains the blue dot on the composer icon.
+- The settings page shows the plugin version: click it to open the project page in a new tab without leaving your conversation, so reporting an issue starts with the version in hand.
+- Fixed the version link pointing at the wrong address: it led to a repository that does not exist, so clicking it opened a 404.
+- Fixed the version failing to load when the install path contains a space: the path resolved with `%20` in it, the read failed silently, and the whole version row disappeared.
+- Tighter settings copy: two multi-clause hints were reduced to one line each, and the blue dot on the composer icon is now explained where it appears.
 
 ## 1.4.1
 
-**中文**
+中文
 
-- 输入框为空时不再显示增强按钮。
+- 长草稿、含链接的草稿不再失败：此前模型输出触顶会被误报成「模型没有返回可用的提示词」；现在识别到截断会自动扩大预算重试，你看到的是一次稍慢但成功的改写。
+- 重启后上下文圆点立即出现：此前重启 DSH 后要发一条消息才显示，而且重启后的第一次改写也会退化成不参考前文；现在改为从磁盘补齐历史。
+- 输入框为空时不再显示按钮：此前空输入框也显示图标，点了没有反应。
+- 上下文圆点颜色修正：此前渲染成白色，现在使用主题中真实存在的品牌色。
+- 圆点含义改为「此刻会发生什么」：它现在只依据改写前就能确定的两件事——开关是否打开、本会话是否确实有上下文——而不是上一次运行的结果。
+- 占位符有了上限：最多 3 个，超出部分折叠成一句请补充其余细节，避免改写结果变成一张待填的表单。
+- 新增 `DSH_SESSIONS_DIR` 环境变量：可覆盖会话根目录，供非默认 DSH home 的部署使用。
 
-**English**
+English
 
-- The Enhance button no longer appears while the composer is empty.
+- Long drafts and drafts containing links no longer fail: a truncated model response used to be reported as the model returning no usable prompt; a truncation now triggers a larger budget and a retry, so you see one slightly slower but successful rewrite.
+- The context dot appears right after a restart: it previously needed a sent message to show up, and the first rewrite after a restart silently ignored earlier turns; history is now read from disk.
+- The icon is hidden while the composer is empty: an empty composer used to show a button that did nothing when clicked.
+- Context dot colour fixed: it rendered white and now uses a brand colour the theme actually defines.
+- The dot now reports what will happen: it is decided by the two facts knowable before a run, namely whether the switch is on and whether this conversation really has context, rather than by the outcome of the previous run.
+- Placeholders are capped at three: anything beyond that is folded into a single request to supply the remaining details, so a rewrite cannot become a form waiting to be completed.
+- New `DSH_SESSIONS_DIR` environment variable: overrides the session root for deployments with a non-default DSH home.
 
 ## 1.2.1
 
-**中文**
+中文
 
-- 长草稿、含链接的草稿不再因输出预算不足而失败：模型触顶时会自动扩大预算重试。
+- 首图演示了「点哪里」：动图从静止开始，指针移入并停在图标上，按下之后草稿被替换，读者一眼能看到是哪个按钮触发改写。
+- 读屏文字同步更新：图片的替代文字改成了「点一下输入框右侧的鲸鱼尾巴图标」，使用读屏的用户同样知道点哪里。
+- 本版只改文档与配图：插件代码与 1.2.0 完全一致，可直接覆盖升级。
 
-**English**
+English
 
-- Long drafts and drafts containing links no longer fail on a small output budget: a truncated run is retried with a larger one.
+- The lead figure shows what to click: the animation starts still, the pointer moves in and rests on the icon, then presses and the draft is replaced, so the triggering control is obvious at a glance.
+- Screen-reader text updated: the image alternative text now says to click the whale-tail icon on the right of the composer, so screen-reader users know where to click too.
+- Documentation and figures only: the plugin code is identical to 1.2.0, so you can upgrade over it directly.
 
 ## 1.2.0
 
-**中文**
+中文
 
-- 改写速度提升约 3 倍。
-- 改写结果更贴近真实意图：把该由你决定的选择留开，上下文模式下的结果可独立成立。
+- 历史裁剪提速约 3 倍：超长的一轮对话不再拖慢改写，同样的预算能携带更多有效上下文。
+- 改写更贴近真实目标：推断你真正想达成什么，而不是照字面改写你的步骤；缺失的信息用显式占位符标出，既不臆造也不悄悄删掉你的需求。
+- 结果更好读：信息按「目标 → 约束 → 输出格式」排序，用祈使句直接对执行者说话。
+- 上下文模式的结果可独立成立：携带前文已经确认的结论，但不携带推导过程。
 
-**English**
+English
 
-- Rewriting is about 3× faster.
-- Results follow intent more closely: choices that belong to you stay open, and a context-aware result stands on its own.
+- History trimming is about 3× faster: an extremely long turn no longer slows the request down, and the same budget carries more useful context.
+- Closer to your real goal: the rewrite infers what you actually want instead of paraphrasing your steps, and marks missing information with explicit placeholders rather than inventing it or dropping it.
+- Easier to follow: information is ordered goal to constraints to output format, addressed to the executor in the imperative.
+- A context-aware result stands on its own: it carries conclusions already settled earlier, without the reasoning behind them.
 
 ## 1.1.0
 
-**中文**
+中文
 
-- 切换会话不再中断进行中的增强：离开会话只是解除界面关注，请求继续跑完，回来时结果自动写入。
+- 切换会话不再中断改写：点了按钮之后可以切到别的会话，任务会继续跑完，回来时结果已经写进输入框。
+- 多会话互不干扰：两个会话可以同时各跑一个改写任务，各自独立完成。
 
-**English**
+English
 
-- Switching sessions no longer cancels a running enhancement: leaving the conversation only detaches the UI, and the result is applied when you return.
+- An enhancement survives a session switch: after clicking, you can move to another conversation and the run finishes anyway; the result is in your draft when you return.
+- Conversations stay independent: two conversations can run one rewrite each at the same time and finish separately.
 
 ## 1.0.3
 
-**中文**
+中文
 
-- 补全中英双语 README 与截图，修复 npm 包内缺失的图片与中文说明。
+- 英文 README 与英文界面截图：README 拆成英文版与中文版，11 个小节一一对应、可互相切换；英文版另配一套界面文字为英文的图。
+- 动图取代静态图：首图循环演示「草稿 → 鱼尾旋成螺旋 → 原地替换成提示词」的完整过程，另一张展示按钮的四种状态。
+- 修复 npm 包内缺失的文件：此前发布包漏掉了截图与中文说明，从 npm 安装的用户看不到配图。
 
-**English**
+English
 
-- Added the bilingual README and screenshots; fixed images and the Chinese guide missing from the npm package.
+- English README and English screenshots: the README split into English and Chinese versions with 11 matching sections that link to each other, and the English one ships its own figures with English UI text.
+- Animated figures replace static ones: the lead figure loops through draft, twisting tail and replaced prompt, and another shows the four button states.
+- Fixed files missing from the npm package: earlier publishes omitted the screenshots and the Chinese guide, so npm users saw no figures.
+
+## 1.0.2
+
+中文
+
+- 首图标注了按钮位置：首张截图加了一处指引，读者不用再猜是哪个图标负责改写。
+- 本版只改文档：插件代码与 1.0.0 相同，可直接覆盖升级。
+
+English
+
+- The lead screenshot points at the button: a guide was added to the first figure, so readers no longer have to guess which icon runs the rewrite.
+- Documentation only: the plugin code is identical to 1.0.0, so you can upgrade over it directly.
+
+## 1.0.0
+
+中文
+
+- 一键改写：输入框有内容时，旁边出现一个按钮，点一下就把草稿改写成目标、格式、约束齐全的可执行提示词，原地替换、不发送消息。
+- 可撤销：改写结果是一次普通编辑，`Ctrl+Z` 或点回退图标即可还原。
+- 可取消：改写过程中再点一下即暂停，草稿保持原样，不报错。
+- 失败可见：出错时按钮变成重试图标，失败原因直接显示在按钮旁，不用翻日志。
+- 上下文感知：会话已有对话时参考前文的目标、已确认项和已排除方案；空会话只处理当前草稿。这会多耗一些 token。
+- 可选参考图片：打开开关后，输入框里已经放好的图片参与改写；历史消息里的图片始终不读。
+- 设置页：三个开关加一个模型选择器，只影响这个按钮，不影响正常发送。
+- 安装：`dsh plugin --profile desktop add dsh-prompt-rewriter`，装完重启 Harness（本插件无 HMR）。
+
+English
+
+- One-click rewrite: with text in the composer, a button appears beside it; one click turns the draft into a complete, executable prompt covering goal, format and constraints — replaced in place, never sent.
+- Undoable: the result is an ordinary edit, so `Ctrl+Z` or the revert icon restores your draft.
+- Cancellable: click again while it runs to pause; your draft stays untouched and nothing errors.
+- Visible failure: on error the button becomes a retry icon and shows the reason beside it, so you never have to open a log.
+- Context aware: a conversation with history contributes its goals, confirmed decisions and ruled-out options; an empty one uses only the current draft. This costs extra tokens.
+- Optional images: with the switch on, images already placed in the composer take part in the rewrite; images from earlier messages are never read.
+- Settings: three switches and a model picker that affect only this button, never normal sending.
+- Install: `dsh plugin --profile desktop add dsh-prompt-rewriter`, then restart Harness (this plugin has no HMR).

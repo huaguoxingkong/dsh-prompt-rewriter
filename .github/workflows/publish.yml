@@ -52,14 +52,57 @@ jobs:
 
       - run: npm install --no-audit --no-fund
 
-      # The publish guard already ran here, so skip the lifecycle script.
-      - run: npm publish --ignore-scripts --access public
+      # prepublishOnly runs `npm run check && npm test && npm run gate`, so the
+      # artefact gate stays in the path; --ignore-scripts used to skip all three.
+      - run: npm publish --access public
+
+      # The release body is derived from the shipped CHANGELOG, never hand-written
+      # and never generated from commit messages. See AGENTS.md §6.1.
+      - name: Derive the release body from CHANGELOG.md
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          node -e '
+            const fs = require("node:fs");
+            const version = process.argv[1];
+            const lines = fs.readFileSync("CHANGELOG.md", "utf8").split(/\r?\n/);
+            const start = lines.findIndex((l) => l.trim() === "## " + version);
+            if (start < 0) throw new Error("CHANGELOG.md has no section for " + version);
+            let end = lines.findIndex((l, i) => i > start && /^## \d/.test(l.trim()));
+            if (end < 0) end = lines.length;
+            const body = lines.slice(start + 1, end).join("\n").trim();
+            const out = body
+              .replace(/^\*\*中文\*\*$/m, "## 中文")
+              .replace(/^\*\*(?:English|英文)\*\*$/m, "## English");
+            if (!/^## 中文$/m.test(out)) throw new Error("no Chinese section for " + version);
+            fs.writeFileSync("release-body.md", out + "\n");
+          ' "$version"
+          cat release-body.md
+
+      - name: Build the release zip
+        shell: bash
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          mkdir -p dist ziproot
+          npm pack --pack-destination dist
+          tar -xzf "dist/${name}-${version}.tgz" -C ziproot
+          mv ziproot/package "ziproot/${name}-${version}"
+          (cd ziproot && zip -qr "../dist/${name}-${version}.zip" .)
 
       - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
           gh release create "${GITHUB_REF_NAME}" \
             --verify-tag \
             --title "${GITHUB_REF_NAME}" \
-            --generate-notes
+            --notes-file release-body.md \
+            --attach "dist/${name}-${version}.zip"
+
+      - name: Verify both channels agree
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/check-sync.mjs --token "$GH_TOKEN"

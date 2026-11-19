@@ -247,6 +247,14 @@ node scripts/gate.mjs            # 规则与形状门禁（发布前必跑）
 npm pack --dry-run               # 检查发布内容
 ```
 
+## 致谢
+
+问题报告与修法建议同样算贡献；每版的致谢写进 [CHANGELOG.md](CHANGELOG.md) 对应条目，这一节收长期名单与早前版本的补记。
+
+- [@YuvuShine](https://github.com/YuvuShine)：报告 #8（命令块存在时增强按钮消失、结果延迟、命令块被改写），给出复现步骤、根因定位与修法，1.8.4 采纳。
+- [@moyuboy](https://github.com/moyuboy)：报告 #4（同槽位控件把按钮覆盖约 4px），给出根因分析与 4 条修法，1.8.3 采纳。
+- [@xutiannuo](https://github.com/xutiannuo)：报告 #2（OpenCode 渠道返回 400 MissingSessionID），给出 3 行修法，1.7.1 采纳。
+
 ## 许可
 
 代码采用 MIT，详见 [LICENSE](LICENSE)。内嵌素材分两类：

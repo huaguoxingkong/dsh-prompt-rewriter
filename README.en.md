@@ -246,6 +246,14 @@ node scripts/gate.mjs            # rule/shape gate (required before release)
 npm pack --dry-run               # inspect what would ship
 ```
 
+## Acknowledgements
+
+Bug reports and fix suggestions count as contributions; per-release credit lives in the matching [CHANGELOG.md](CHANGELOG.md) entry, and this section keeps the standing list and back-filled credit.
+
+- [@YuvuShine](https://github.com/YuvuShine): reported #8 (button vanishing with a command chip, deferred result, chip rewritten as plain text) with repro steps, root-cause analysis and a fix — adopted in 1.8.4.
+- [@moyuboy](https://github.com/moyuboy): reported #4 (a same-slot control covering the button by ~4px) with root-cause analysis and four fix options — adopted in 1.8.3.
+- [@xutiannuo](https://github.com/xutiannuo): reported #2 (400 MissingSessionID on the OpenCode channel) with a three-line fix — adopted in 1.7.1.
+
 ## License
 
 Code is MIT — see [LICENSE](LICENSE). Embedded artwork falls into two classes:
