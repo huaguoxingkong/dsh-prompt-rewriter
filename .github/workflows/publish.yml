@@ -52,6 +52,15 @@ jobs:
 
       - run: npm install --no-audit --no-fund
 
+      # prepublishOnly runs `npm run check && npm test && npm run gate`; the gate
+      # inspects dist/<name>-<version>.tgz, which a clean checkout does not have.
+      # Pack it once first so the gate compares the real artefact, not nothing.
+      - name: Pack the tarball the gate inspects
+        shell: bash
+        run: |
+          mkdir -p dist
+          npm pack --pack-destination dist
+
       # prepublishOnly runs `npm run check && npm test && npm run gate`, so the
       # artefact gate stays in the path; the lifecycle script used to be skipped.
       - run: npm publish --access public
