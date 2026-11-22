@@ -114,7 +114,7 @@ Only **non-image attachments currently in the composer** — attachments from ea
 
 ## Settings
 
-`Settings → Prompt Enhance`. Five switches and two selectors (model, rule set), affecting **only this button, never normal sending**.
+`Settings → Prompt Enhance`. Five switches and two selectors (model, rule set), plus a **custom rules** entry inside the rule-set dropdown, affecting **only this button, never normal sending**.
 
 ![Settings page](https://cdn.jsdelivr.net/npm/dsh-prompt-rewriter/docs/images/04-settings-en.png)
 
@@ -132,6 +132,7 @@ Only **non-image attachments currently in the composer** — attachments from ea
 - Images still uploading or over the Host attachment service's per-image or per-message limit are skipped; the status area reports how many were missed. A rewrite never fails because of an image.
 - Files over the count or size limit are skipped and reported in the result status.
 - The **current version** sits in the top-right of the settings page; clicking it opens the project home page. Check it before reporting a problem — it makes the issue much easier to pin down.
+- **Custom rules**: pick "Custom: <name>" in the rule-set dropdown to use one. "＋ Add rule" opens two fields — a **meta prompt** on top (one click to copy; when the clipboard is unavailable the field is selected for you and the hint says to press Ctrl+C) and a paste box below. Send the meta prompt to your own AI; it returns a rule set built from your habits, preferences and memory. Paste the body back, give it a name and save. Up to 10 rules, 4000 characters each. Every entry can be **disabled or enabled**; disabling or deleting the rule in use switches the selection back to **Legacy** in the same save, so a dead selection is never left behind (a hand-edited config that disables the rule in use is refused, and the run time falls back to Legacy as well).
 - The first row is the entry point: "Star ⭐ · problems? open an issue ↗", leading to the project home page and this project's issue list.
 - The **changelog** at the bottom folds by version, newest open by default; it is read from the shipped `CHANGELOG.md`, so it works offline.
 
@@ -178,7 +179,7 @@ Download the zip from [Releases](https://github.com/huaguoxingkong/dsh-prompt-re
 
 ## Configuration
 
-Every `config` key on the profile plugin line is optional. The first eight are managed by the settings page; the last seven are operational ceilings and are not exposed in the UI.
+Every `config` key on the profile plugin line is optional. The first nine are managed by the settings page; the last seven are operational ceilings and are not exposed in the UI.
 
 ```yaml
 - id: dsh-prompt-rewriter
@@ -189,6 +190,7 @@ Every `config` key on the profile plugin line is optional. The first eight are m
     enhanceProvider: ""        # empty = follow the session model
     enhanceModel: ""
     ruleSet: legacy            # enhancement rule set: legacy / intent-first / workbuddy
+    customRules: "[]"          # user rules as a JSON array string: max 10, 4000 chars each
     referenceImages: false     # read composer images
     referenceFiles: true       # read composer file contents
     referenceContext: true     # read earlier turns

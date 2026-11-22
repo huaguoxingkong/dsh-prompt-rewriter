@@ -1,8 +1,39 @@
-# 更新日志
+# Changelog
 
-记录每个已发布版本的变化。插件内只维护中文条目；对外发布（GitHub Release / npm）的双语正文按本文件生成，中文以本文件为准，英文按此翻译。
+本项目的所有重要改动都记录在本文件。
 
-## 1.8.4
+格式遵循 [Keep a Changelog 1.1.0](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/)。
+开发期改动写在 `[Unreleased]` 段，发布时改名为 `## [X.Y.Z] - YYYY-MM-DD`；设置页的更新日志只列已发布的正式版本。
+
+## [Unreleased]
+
+## [1.9.0] - 2026-11-22
+
+**中文**
+
+### 新增
+
+- 自定义规则：可以在「增强规则版本」里写自己的改写规则并选中使用，最多 10 条；「＋ 添加规则」会给出一段可直接复制给 AI 的提示词，生成的正文粘回即可保存；每次增强结束还会在输入框上方提示这次是按自定义规则改写、模型判定无需改动，还是用了内置规则。
+
+### 修复
+
+- 与 dsh-claude-style 这类会收紧行距的主题同开时，输入框的鲸鱼标记不再压住模型名（issue #9）。
+- 增强请求不再超出模型声明的输出上限，不会再因此被 provider 以 400 拒绝（issue #10）。
+- 设置页的更新日志不再把 Markdown 记号原样显示：历史版本里的反引号与星号按纯文本呈现。
+
+**English**
+
+### Added
+
+- Custom rules: write your own rewrite rules in the Enhance rule set row (up to 10) and use one instead of the built-in sets; "+ Add rule" gives you a prompt to hand to your own AI, and pasting the result back saves it. A line above the composer then says whether your rule was used, whether the model saw nothing to change, or which built-in rule ran.
+
+### Fixed
+
+- The composer's whale mark no longer overlaps the model name when a theme such as dsh-claude-style tightens that row (issue #9).
+- An enhancement no longer asks for more output than the model declares, so it is no longer rejected with a 400 (issue #10).
+- The changelog in settings no longer shows raw Markdown: backticks and asterisks from older entries are rendered as plain text.
+
+## [1.8.4] - 2026-11-19
 
 **中文**
 
@@ -16,7 +47,7 @@
 - The rewrite lands immediately instead of waiting for a session switch: under `claimed` the result used to be parked and only announced to screen readers, and the composer had to be rebuilt in another session before it was applied; it now writes directly, exactly like a plain draft.
 - The command chip is no longer downgraded to plain text: the whole-draft replacement used to start at offset 0 and overwrite the chip, silently disabling the command; the chip and its separator are now protected segments, the rewrite lands after the command argument, and a whole-draft `setDraft` write is refused while a chip is present.
 
-## 1.8.3
+## [1.8.3] - 2026-11-13
 
 中文
 
@@ -44,7 +75,7 @@ English
 - Docs and screenshots. The settings screenshot is re-shot for this UI in both languages at 2x. The README gains attachment, no-questions, rule-set, FAQ, how-it-works and known-limits sections. The false "unit tests are not published with this repository" line now reads "not published in the npm package", and `node scripts/gate.mjs` is documented as the pre-release gate.
 - README images moved and renumbered in reading order: `01-hero`, `02-button-states`, `03-context-modes`, `04-settings` (both languages), served from jsDelivr inside the package. The `01 → 03 → 04 → 05` gap is gone.
 
-## 1.7.1
+## [1.7.1] - 2026-11-06
 
 中文
 
@@ -54,7 +85,7 @@ English
 
 - Enhancement requests on OpenCode no longer return 400: the session id was not forwarded to the model layer, so OpenCode targets were missing the `x-opencode-session` routing header and the API answered `400 MissingSessionID`. It is now sent with the request; every other provider behaves exactly as before. (Thanks to @xutiannuo for the report and the fix direction.)
 
-## 1.7.0
+## [1.7.0] - 2026-11-05
 
 中文
 
@@ -68,7 +99,7 @@ English
 - Enhanced prompts no longer carry an attachment's full disk path: the rewritten prompt used to copy out addresses like `@D:\...`. Only the readable file name is kept now, and undo restores only the text you typed yourself.
 - The settings page now ships a changelog: released versions fold open by version — the latest expanded by default, each entry shown line by line. The content is read from the CHANGELOG.md shipped with the package and stays in step with the current version.
 
-## 1.6.3
+## [1.6.3] - 2026-11-02
 
 中文
 
@@ -80,7 +111,7 @@ English
 - The plugin no longer goes dormant when the host's shortcut service is missing: if that service never registered — for example when another plugin pinned the client runtime to an older range — the whole plugin stayed inactive and the composer button disappeared with it. Only the shortcut degrades now; the Enhance button keeps working.
 - A service that registers late still resolves: the settings page no longer reports the binding as unset or unavailable when the service arrives after the plugin.
 
-## 1.6.2
+## [1.6.2] - 2026-10-31
 
 中文
 
@@ -92,7 +123,7 @@ English
 - The twisting tail now uses the brand blue: while an enhancement runs, the tail animation inherited the button's text colour, which is near white in the dark theme and did not match the fish icon beside it. It now uses the official brand blue, so the idle and running states read as one control.
 - Composer images are read more reliably: when the host service cannot answer, the composer's own channel is used instead; when neither can, the images are no longer skipped silently — the text-only rewrite still completes and the status area reports how many were missed.
 
-## 1.6.1
+## [1.6.1] - 2026-10-30
 
 中文
 
@@ -102,7 +133,7 @@ English
 
 - Code cleanup only, no functional change: the console message printed when shortcut registration fails and one internal debug attribute were removed. The button, the settings page and the rewrite flow behave exactly as in 1.6.0.
 
-## 1.6.0
+## [1.6.0] - 2026-10-30
 
 中文
 
@@ -118,7 +149,7 @@ English
 - Same as clicking: the shortcut runs the icon's own click handler, so pressing it again after a finished enhancement undoes it, exactly like the icon. Restoring a draft stays on the button or `Ctrl+Z`.
 - Survives a restart: the binding is registered through Harness's shortcut service, so it persists across restarts.
 
-## 1.5.1
+## [1.5.1] - 2026-10-29
 
 中文
 
@@ -134,7 +165,7 @@ English
 - Fixed the version failing to load when the install path contains a space: the path resolved with `%20` in it, the read failed silently, and the whole version row disappeared.
 - Tighter settings copy: two multi-clause hints were reduced to one line each, and the blue dot on the composer icon is now explained where it appears.
 
-## 1.4.1
+## [1.4.1] - 2026-10-28
 
 中文
 
@@ -156,7 +187,7 @@ English
 - Placeholders are capped at three: anything beyond that is folded into a single request to supply the remaining details, so a rewrite cannot become a form waiting to be completed.
 - New `DSH_SESSIONS_DIR` environment variable: overrides the session root for deployments with a non-default DSH home.
 
-## 1.2.1
+## [1.2.1] - 2026-10-28
 
 中文
 
@@ -170,7 +201,7 @@ English
 - Screen-reader text updated: the image alternative text now says to click the whale-tail icon on the right of the composer, so screen-reader users know where to click too.
 - Documentation and figures only: the plugin code is identical to 1.2.0, so you can upgrade over it directly.
 
-## 1.2.0
+## [1.2.0] - 2026-10-28
 
 中文
 
@@ -186,7 +217,7 @@ English
 - Easier to follow: information is ordered goal to constraints to output format, addressed to the executor in the imperative.
 - A context-aware result stands on its own: it carries conclusions already settled earlier, without the reasoning behind them.
 
-## 1.1.0
+## [1.1.0] - 2026-10-28
 
 中文
 
@@ -198,7 +229,7 @@ English
 - An enhancement survives a session switch: after clicking, you can move to another conversation and the run finishes anyway; the result is in your draft when you return.
 - Conversations stay independent: two conversations can run one rewrite each at the same time and finish separately.
 
-## 1.0.3
+## [1.0.3] - 2026-10-28
 
 中文
 
@@ -212,7 +243,7 @@ English
 - Animated figures replace static ones: the lead figure loops through draft, twisting tail and replaced prompt, and another shows the four button states.
 - Fixed files missing from the npm package: earlier publishes omitted the screenshots and the Chinese guide, so npm users saw no figures.
 
-## 1.0.2
+## [1.0.2] - 2026-10-28
 
 中文
 
@@ -224,7 +255,7 @@ English
 - The lead screenshot points at the button: a guide was added to the first figure, so readers no longer have to guess which icon runs the rewrite.
 - Documentation only: the plugin code is identical to 1.0.0, so you can upgrade over it directly.
 
-## 1.0.0
+## [1.0.0] - 2026-10-28
 
 中文
 
@@ -247,3 +278,24 @@ English
 - Optional images: with the switch on, images already placed in the composer take part in the rewrite; images from earlier messages are never read.
 - Settings: three switches and a model picker that affect only this button, never normal sending.
 - Install: `dsh plugin --profile desktop add dsh-prompt-rewriter`, then restart Harness (this plugin has no HMR).
+
+## 链接
+
+[Unreleased]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.8.4...v1.9.0
+[1.8.4]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.8.3...v1.8.4
+[1.8.3]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.7.1...v1.8.3
+[1.7.1]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.7.0...v1.7.1
+[1.7.0]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.6.3...v1.7.0
+[1.6.3]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.6.2...v1.6.3
+[1.6.2]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.6.1...v1.6.2
+[1.6.1]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.6.0...v1.6.1
+[1.6.0]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.5.1...v1.6.0
+[1.5.1]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.4.1...v1.5.1
+[1.4.1]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.2.1...v1.4.1
+[1.2.1]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.0.3...v1.1.0
+[1.0.3]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/compare/v1.0.0...v1.0.2
+[1.0.0]: https://github.com/huaguoxingkong/dsh-prompt-rewriter/releases/tag/v1.0.0

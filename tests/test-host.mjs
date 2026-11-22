@@ -33,6 +33,7 @@ await test('Config declares only the user preferences', async () => {
 	assert.ok(plugin.Config, 'Config must be exported');
 	assert.equal(plugin.Config.type, 'object');
 	assert.deepEqual(Object.keys(plugin.Config.dict).sort(), [
+		'customRules',
 		'enhanceModel',
 		'enhanceProvider',
 		'referenceContext',
@@ -64,17 +65,28 @@ function fakeLlm({
 	throws = null,
 	providers = [{ id: 'p1', name: 'P1' }],
 	contextWindow = undefined,
+	declaredOutput = undefined,
 	calls = [],
 } = {}) {
 	return {
 		calls,
 		listProviders: () => providers,
-		resolveModelInfo: async () => (contextWindow === undefined ? {} : { context: { contextWindow } }),
+		resolveModelInfo: async () => ({
+			...(contextWindow === undefined ? {} : { context: { contextWindow } }),
+			...(declaredOutput === undefined ? {} : { limits: { maxOutputTokens: declaredOutput } }),
+		}),
 		prepareCall: async (config) => {
 			if (throws) throw throws;
 			return {
 				config: { ...config },
 				stream: async function* (options) {
+					// A provider rejects a `max_tokens` above the model's declared output cap
+					// with a 400 before any chunk arrives — the exact failure in issue #10.
+					if (declaredOutput !== undefined && config.maxTokens > declaredOutput) {
+						const error = new Error(`400: max_tokens ${config.maxTokens} exceeds this model's ${declaredOutput}`);
+						error.code = '400';
+						throw error;
+					}
 					calls.push(options);
 					// textSequence answers call N with entry N (clamped to the last
 					// entry), which is how a retry that behaves differently is faked.
@@ -947,6 +959,9 @@ await test('settings GET returns the defaults', async () => {
 		referenceContext: true,
 		shortcutEnabled: false,
 		ruleSet: 'legacy',
+		// The custom-rule list is a live preference like the others: an empty array
+		// keeps older configs readable without touching the three shipped rule sets.
+		customRules: '[]',
 	});
 });
 
@@ -1268,7 +1283,9 @@ await test('an in-memory log wins over the persisted probe', async () => {
 // "模型没有返回可用的提示词" on a long draft.
 
 await test('the completion budget includes headroom for reasoning tokens', async () => {
-	const llm = fakeLlm({ textParts: ['ok'] });
+	// Headroom is only provable when the model declares its output cap: the declared
+	// number is what bounds the request, so 2000 + headroom still fits.
+	const llm = fakeLlm({ textParts: ['ok'], declaredOutput: 8192 });
 	const { ctx, routes } = makeCtx({ llm });
 	plugin.apply(ctx, { maxOutputTokens: 2000 });
 	await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
@@ -1276,6 +1293,32 @@ await test('the completion budget includes headroom for reasoning tokens', async
 	assert.ok(
 		sent.maxTokens > 2000,
 		`maxTokens must exceed the answer budget so reasoning cannot starve the output (got ${sent.maxTokens})`,
+	);
+});
+
+await test('an undeclared output cap starts at the configured budget (issue #10)', async () => {
+	// With no declared cap there is nothing to clamp against, so the +1500 headroom
+	// would be an unverifiable guess that a provider can reject outright. Start at
+	// exactly what the user configured; growth waits for a real truncation.
+	const llm = fakeLlm({ textParts: ['ok'] });
+	const { ctx, routes } = makeCtx({ llm });
+	plugin.apply(ctx, { maxOutputTokens: 2000 });
+	await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+	assert.equal(llm.calls[0].maxTokens, 2000, 'no invented headroom without a declared cap');
+});
+
+await test('a request never asks for more output than the model declares (issue #10)', async () => {
+	// The regression from the issue: maxOutputTokens 8000 plus the 1500 headroom is
+	// 9500, and Math.max let that overshoot the model's declared 8192 -> provider 400.
+	const llm = fakeLlm({ textParts: ['ok'], declaredOutput: 8192 });
+	const { ctx, routes } = makeCtx({ llm });
+	plugin.apply(ctx, { maxOutputTokens: 8000 });
+	const result = await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+	assert.equal(result.json.ok, true, `the request must fit the declared cap (${JSON.stringify(result.json)})`);
+	assert.equal(llm.calls.length, 1, 'the first attempt must already fit — no 400 then retry');
+	assert.ok(
+		llm.calls[0].maxTokens <= 8192,
+		`asked for ${llm.calls[0].maxTokens} tokens, the model declares 8192`,
 	);
 });
 
@@ -1540,11 +1583,76 @@ await test('settings exposes the shipped changelog as Chinese-only published ver
 	for (const entry of body.changelog) {
 		assert.match(entry.version, /^\d+\.\d+\.\d+$/u, 'published versions only');
 		assert.ok(entry.items.length > 0, 'each version has Chinese entries');
+		// Keep a Changelog 1.1.0: a released section carries its date. The panel lists
+		// only dated sections, so anything without one cannot read as published.
+		assert.match(entry.date, /^\d{4}-\d{2}-\d{2}$/u, 'every listed version is dated');
+		assert.equal('dev' in entry, false, 'no dev flag is exposed any more');
 	}
+	// Newest first. As of this build 1.9.0 IS released, so it is the newest listed
+	// version and its bullets belong in the panel; the empty `[Unreleased]` heading
+	// above it still must never surface as a release of its own.
+	assert.equal(body.changelog[0].version, '1.9.0', 'the newest entry is the newest published release');
+	assert.equal(body.changelog[0].date, '2026-11-22', 'the release carries the date it shipped with');
+	const listed = body.changelog.map((entry) => entry.version);
+	assert.equal(listed.includes('1.9.0'), true, '1.9.0 is a published version now');
+	assert.equal(listed.includes('1.9.1'), false, 'a version nobody released is not invented');
+	// Its bullets must appear in the list rather than being dropped with the heading.
 	const text = body.changelog.flatMap((entry) => entry.items).join('\n');
 	assert.match(text, /快捷键服务缺失时插件不再整体失效/u, 'Chinese entries are kept');
 	assert.match(text, /上传文件或链接后改写结果不再被拒绝/u, 'the 1.7.0 entry is present');
+	assert.match(text, /自定义规则/u, 'the 1.9.0 custom-rule entry is listed');
 	assert.equal(/The plugin no longer goes dormant/u.test(text), false, 'English blocks are skipped');
+});
+
+await test('changelog bullets reach the panel as plain text, even where the file holds Markdown', async () => {
+	// Older published sections carry inline code spans; the panel has no Markdown
+	// renderer, so the read path unwraps them. The shipped file is never rewritten:
+	// the release body and the A3/B7 checks compare it byte for byte.
+	const shipped = fs.readFileSync(path.join(REPO_ROOT, 'CHANGELOG.md'), 'utf8');
+	assert.ok(shipped.includes('`'), 'this case only means something while the file still holds Markdown');
+	const { ctx, routes } = makeCtx({ llm: fakeLlm({ textParts: ['x'] }) });
+	ctx.settings = { update: async () => {} };
+	ctx.fiber = { entry: { options: { id: 'dsh-prompt-rewriter' } } };
+	plugin.apply(ctx, {});
+	const route = routeByPath(routes, '/api/prompt-enhance/settings');
+	const body = await (await route.fetch(new Request('http://x/api/prompt-enhance/settings'))).json();
+	const items = body.changelog.flatMap((entry) => entry.items);
+	assert.ok(items.length > 0, 'the panel lists entries');
+	assert.deepEqual(items.filter((item) => /[*`]/u.test(item)), [], 'no bullet carries a Markdown marker');
+	const old = body.changelog.find((entry) => entry.version === '1.8.4');
+	assert.ok(old !== undefined, 'the 1.8.4 section is still listed');
+	assert.equal(old.items.some((item) => item.includes('**')), false, 'the 1.8.4 section renders without asterisks');
+});
+
+await test('the newest section declares its language blocks the way the release gate reads them', async () => {
+	// release-gate.mjs only recognises `**中文**` / `**English**`, and the release
+	// body is extracted through them. A section that spells them as plain text
+	// parses as zero entries, which is how a release ends up with an empty body.
+	// Older sections predate that gate and stay untouched; the one about to ship
+	// must not regress.
+	const shipped = fs.readFileSync(path.join(REPO_ROOT, 'CHANGELOG.md'), 'utf8');
+	const lines = shipped.split('\n').map((line) => line.trim());
+	const sections = [];
+	for (let index = 0; index < lines.length; index++) {
+		if (/^## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}$/u.test(lines[index])) sections.push(index);
+	}
+	assert.ok(sections.length >= 11, 'the file still lists the released sections');
+	const CHINESE = ['**中文**', '中文', '## 中文'];
+	for (const start of sections) {
+		let end = lines.length;
+		for (let index = start + 1; index < lines.length; index++) {
+			if (/^## /u.test(lines[index])) { end = index; break; }
+		}
+		const body = lines.slice(start + 1, end);
+		assert.ok(body.some((line) => CHINESE.includes(line)), `${lines[start]} declares a Chinese block`);
+	}
+	let newestEnd = lines.length;
+	for (let index = sections[0] + 1; index < lines.length; index++) {
+		if (/^## /u.test(lines[index])) { newestEnd = index; break; }
+	}
+	const newest = lines.slice(sections[0] + 1, newestEnd);
+	assert.ok(newest.includes('**中文**'), `${lines[sections[0]]} must spell its Chinese block as **中文** for the gate`);
+	assert.ok(newest.includes('**English**'), `${lines[sections[0]]} must spell its English block as **English** for the gate`);
 });
 
 await test('the one-time update notice is fully removed', async () => {
@@ -1589,6 +1697,243 @@ await test('the rule-set setting accepts workbuddy and rejects an unknown value'
 	assert.equal(accepted.ok, true);
 	const read = await (await route.fetch(new Request('http://x/api/prompt-enhance/settings', { method: 'GET' }))).json();
 	assert.equal(read.values.ruleSet, 'workbuddy', 'the live value is read back, not the boot snapshot');
+});
+
+/**
+ * A custom rule set only supplies the RULES segment. The tagged output contract and
+ * the context clause stay host-owned: the parser at index.js reads ENHANCED /
+ * UNCHANGED / CLARIFY, so a user rule that omits them would break every enhancement.
+ */
+const CUSTOM_RULES_SAMPLE = JSON.stringify([
+	{ id: 'c1', name: '我的规则', body: 'RULE: always answer in Chinese and keep my hard constraints.', enabled: true, order: 0 },
+]);
+
+await test('a custom rule set supplies the rules segment and keeps the host output contract', async () => {
+	const llm = fakeLlm({ textParts: ['ENHANCED\n改写结果'] });
+	const { ctx, routes } = makeCtx({ llm, derived: [] });
+	plugin.apply(ctx, { ruleSet: 'custom:c1', customRules: CUSTOM_RULES_SAMPLE });
+	await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+	const system = onlyCall(llm).system;
+	assert.match(system, /always answer in Chinese/u, 'the user rule body is in force');
+	assert.match(system, /OUTPUT CONTRACT/u, 'the host still owns the output contract');
+	assert.match(system, /ENHANCED/u, 'the tagged output protocol survives');
+	assert.equal(/You are a prompt editor/u.test(system), false, 'no built-in playbook is mixed in');
+});
+
+await test('a custom rule selection must point at an existing rule', async () => {
+	const live = { ruleSet: 'legacy', customRules: CUSTOM_RULES_SAMPLE };
+	const { ctx, routes } = makeCtx({ llm: fakeLlm({ textParts: ['x'] }) });
+	ctx.fiber = { entry: { options: { id: 'dsh-prompt-rewriter', config: live } } };
+	ctx.settings = { update: async (ns, patch) => { Object.assign(live, patch); } };
+	ctx.get = ((original) => (name) => (name === 'settings' ? ctx.settings : original(name)))(ctx.get.bind(ctx));
+	plugin.apply(ctx, {});
+	const route = routeByPath(routes, '/api/prompt-enhance/settings');
+	const post = (body) => route.fetch(new Request('http://x/api/prompt-enhance/settings', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(body),
+	}));
+
+	const rejected = await (await post({ ruleSet: 'custom:missing' })).json();
+	assert.equal(rejected.ok, false, 'an unknown custom id is refused');
+	assert.equal(rejected.code, 'BAD_REQUEST');
+	assert.match(rejected.message, /自定义/u, 'the message explains the custom rule requirement');
+
+	const accepted = await (await post({ ruleSet: 'custom:c1' })).json();
+	assert.equal(accepted.ok, true, 'a stored custom id is accepted');
+	assert.equal(live.ruleSet, 'custom:c1');
+});
+
+await test('the custom rule list is capped at ten entries and validates its shape', async () => {
+	const live = { ruleSet: 'legacy', customRules: '[]' };
+	const { ctx, routes } = makeCtx({ llm: fakeLlm({ textParts: ['x'] }) });
+	ctx.fiber = { entry: { options: { id: 'dsh-prompt-rewriter', config: live } } };
+	ctx.settings = { update: async (ns, patch) => { Object.assign(live, patch); } };
+	ctx.get = ((original) => (name) => (name === 'settings' ? ctx.settings : original(name)))(ctx.get.bind(ctx));
+	plugin.apply(ctx, {});
+	const route = routeByPath(routes, '/api/prompt-enhance/settings');
+	const post = (body) => route.fetch(new Request('http://x/api/prompt-enhance/settings', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(body),
+	}));
+
+	const eleven = JSON.stringify(Array.from({ length: 11 }, (_, index) => ({ id: `c${index}`, name: `r${index}`, body: 'x', enabled: true, order: index })));
+	const tooMany = await (await post({ customRules: eleven })).json();
+	assert.equal(tooMany.ok, false, 'eleven rules are refused');
+	assert.match(tooMany.message, /10/u, 'the cap is stated');
+
+	const broken = await (await post({ customRules: '{"not":"an array"}' })).json();
+	assert.equal(broken.ok, false, 'a non-array payload is refused');
+
+	const ten = JSON.stringify(Array.from({ length: 10 }, (_, index) => ({ id: `c${index}`, name: `r${index}`, body: 'x', enabled: true, order: index })));
+	const okTen = await (await post({ customRules: ten })).json();
+	assert.equal(okTen.ok, true, 'ten rules are accepted');
+	assert.equal(live.customRules, ten);
+});
+
+await test('disabling the rule that is currently selected is refused, editing it is not', async () => {
+	const live = { ruleSet: 'custom:c1', customRules: CUSTOM_RULES_SAMPLE };
+	const { ctx, routes } = makeCtx({ llm: fakeLlm({ textParts: ['x'] }) });
+	ctx.fiber = { entry: { options: { id: 'dsh-prompt-rewriter', config: live } } };
+	ctx.settings = { update: async (ns, patch) => { Object.assign(live, patch); } };
+	ctx.get = ((original) => (name) => (name === 'settings' ? ctx.settings : original(name)))(ctx.get.bind(ctx));
+	plugin.apply(ctx, {});
+	const route = routeByPath(routes, '/api/prompt-enhance/settings');
+	const post = (body) => route.fetch(new Request('http://x/api/prompt-enhance/settings', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(body),
+	}));
+
+	const disabled = JSON.stringify([{ id: 'c1', name: '我的规则', body: 'RULE: x', enabled: false, order: 0 }]);
+	const refused = await (await post({ customRules: disabled })).json();
+	assert.equal(refused.ok, false, 'the active rule cannot be switched off under itself');
+	assert.match(refused.message, /正在使用/u, 'the refusal says why');
+	assert.equal(live.customRules, CUSTOM_RULES_SAMPLE, 'the stored list is untouched by a refused write');
+
+	const edited = JSON.stringify([{ id: 'c1', name: '改名后的规则', body: 'RULE: y', enabled: true, order: 0 }]);
+	const accepted = await (await post({ customRules: edited })).json();
+	assert.equal(accepted.ok, true, 'editing the active rule is allowed');
+	assert.equal(live.customRules, edited);
+});
+
+/**
+ * Defensive path only: a hand-edited config can still name a disabled rule. The Host
+ * then runs the legacy playbook rather than sending an empty prompt to the model.
+ */
+await test('a selected custom rule that cannot resolve is refused, never swapped for the legacy playbook', async () => {
+	// A silent swap to the built-in wording is exactly what reads to a user as "my rule
+	// does nothing": the selection has to fail visibly instead.
+	const rules = JSON.stringify([{ id: 'c1', name: '我的规则', body: 'RULE: never sent', enabled: false, order: 0 }]);
+	const llm = fakeLlm({ textParts: ['ENHANCED\n结果'] });
+	const { ctx, routes } = makeCtx({ llm, derived: [] });
+	plugin.apply(ctx, { ruleSet: 'custom:c1', customRules: rules });
+	const result = await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+	assert.equal(result.json.ok, false, 'a broken custom selection fails instead of rewriting');
+	assert.equal(result.json.code, 'BAD_REQUEST');
+	assert.match(result.json.message, /自定义规则不可用/u, 'the message names the real cause');
+	assert.equal(llm.calls.length, 0, 'no request is sent under the wrong rule set');
+});
+
+/**
+ * "My custom rule reset itself to WorkBuddy." The plugin has exactly one writer for
+ * `ruleSet` — the dropdown — so every other control must be provably unable to touch
+ * it, and loading the page must write nothing back.
+ */
+await test('another control never rewrites the rule selection, and a boot writes nothing', async () => {
+	const live = { ruleSet: 'custom:c1', customRules: CUSTOM_RULES_SAMPLE };
+	const { ctx, routes } = makeCtx({ llm: fakeLlm({ textParts: ['x'] }) });
+	ctx.fiber = { entry: { options: { id: 'dsh-prompt-rewriter', config: live } } };
+	const writes = [];
+	ctx.settings = { update: async (ns, patch) => { writes.push(patch); Object.assign(live, patch); } };
+	ctx.get = ((original) => (name) => (name === 'settings' ? ctx.settings : original(name)))(ctx.get.bind(ctx));
+	plugin.apply(ctx, {});
+	const route = routeByPath(routes, '/api/prompt-enhance/settings');
+	const post = (body) => route.fetch(new Request('http://x/api/prompt-enhance/settings', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(body),
+	}));
+
+	const read = await (await route.fetch(new Request('http://x/api/prompt-enhance/settings', { method: 'GET' }))).json();
+	assert.equal(read.values.ruleSet, 'custom:c1', 'a boot/GET reports the stored rule');
+	assert.deepEqual(writes, [], 'reading the settings never writes anything back');
+
+	const saved = await (await post({ useCustomModel: true })).json();
+	assert.equal(saved.ok, true);
+	assert.deepEqual(writes.at(-1), { useCustomModel: true }, 'the toggle posts its own key and nothing else');
+	assert.equal(live.ruleSet, 'custom:c1', 'the selection survives another card saving');
+	assert.equal(saved.values.ruleSet, 'custom:c1', 'the response still names the custom rule');
+});
+
+/**
+ * The release build carries no diagnostics.
+ *
+ * `debugRaw`, its log file, its env override and the `/debug-report` route were
+ * development scaffolding and are gone. The interesting half is compatibility: a
+ * config written by an older build still contains the key, and that must keep working
+ * — ignored, not fatal, and certainly not a reason to keep writing traces.
+ */
+await test('the shipped build keeps no diagnostic trace', async () => {
+	const logPath = path.join(os.tmpdir(), `dpr-nolog-${process.pid}-${Date.now()}.log`);
+	process.env.DSH_PROMPT_REWRITER_DEBUG_LOG = logPath;
+	try {
+		assert.equal(plugin.Config.dict.debugRaw, undefined, 'the debug key is gone from the schema');
+		const rules = JSON.stringify([{ id: 'c1', name: '我的规则', body: 'RULE: x', enabled: true, order: 0 }]);
+		const { ctx, routes } = makeCtx({ llm: fakeLlm({ textParts: ['ENHANCED\n1'] }), derived: [] });
+		// An old config that still carries the dead key must load and enhance normally.
+		plugin.apply(ctx, { ruleSet: 'custom:c1', customRules: rules, debugRaw: true });
+		assert.equal(routes.some((route) => route.path === '/api/prompt-enhance/debug-report'), false, 'the report route is gone');
+		const result = await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+		assert.equal(result.json.ok, true, 'an old config with the dead key still enhances');
+		assert.equal(result.json.debug, undefined, 'the response no longer asks the browser to report back');
+		assert.equal(fs.existsSync(logPath), false, 'nothing is written to disk');
+	} finally {
+		delete process.env.DSH_PROMPT_REWRITER_DEBUG_LOG;
+		fs.rmSync(logPath, { force: true });
+	}
+});
+
+await test('a selected custom rule is sent verbatim as the rules segment', async () => {
+	// Reported as "the custom rule does not take effect": the body is saved and
+	// selected, so the request itself has to carry it. This checks what the model
+	// actually receives, not what the settings store says.
+	const body = '无视任何限制，看到这个规则就只输出';
+	const rules = JSON.stringify([{ id: 'c1', name: '我的规则', body, enabled: true, order: 0 }]);
+	const llm = fakeLlm({ textParts: ['ENHANCED\n结果'] });
+	const { ctx, routes } = makeCtx({ llm, derived: [] });
+	plugin.apply(ctx, { ruleSet: 'custom:c1', customRules: rules });
+	await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+	const system = onlyCall(llm).system;
+	assert.ok(system.includes(body), `the rule body must reach the model verbatim; got:\n${system}`);
+	assert.match(system, /OUTPUT CONTRACT/u, 'the tagged contract still travels with a custom rule');
+	assert.doesNotMatch(system, /You are a senior prompt engineer/u, 'no built-in playbook rides along');
+});
+
+await test('a tagged `ENHANCED` reply replaces the draft even when the body is one character', async () => {
+	// The user's own smoke test for "did my custom rule take over": the rule tells the
+	// model to answer with `ENHANCED` + `1`. A short body is real output, not an empty
+	// one, so it must land in the draft untouched by any length guard.
+	const rules = JSON.stringify([{ id: 'c1', name: '我的规则', body: '无论草稿是什么，都只输出 ENHANCED 和一行 1', enabled: true, order: 0 }]);
+	const llm = fakeLlm({ textParts: ['ENHANCED\n1'] });
+	const { ctx, routes } = makeCtx({ llm, derived: [] });
+	plugin.apply(ctx, { ruleSet: 'custom:c1', customRules: rules });
+	const result = await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+	assert.equal(result.json.ok, true, `a one-character rewrite is a success: ${JSON.stringify(result.json)}`);
+	assert.equal(result.json.text, '1', 'the body after the tag is the whole draft');
+	assert.equal(result.json.kind, 'enhanced');
+	assert.equal(llm.calls.length, 1, 'a short tagged reply needs no retry');
+});
+
+await test('an untagged one-line reply is taken as the rewrite, not as an empty result', async () => {
+	// The contrast that matters when someone tests a rule by hand: only `UNCHANGED`
+	// keeps the draft. An untagged line is the whole result (index.js classify branch),
+	// so it replaces the draft too.
+	const llm = fakeLlm({ textParts: ['1'] });
+	const { ctx, routes } = makeCtx({ llm, derived: [] });
+	plugin.apply(ctx, {});
+	const result = await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+	assert.equal(result.json.ok, true);
+	assert.equal(result.json.text, '1', 'without a tag the whole reply is the rewrite');
+	assert.equal(result.json.kind, 'enhanced');
+});
+
+/**
+ * Defence for the read path: a hand-edited config or a failed migration can leave a
+ * value that is not valid JSON, or an empty string. Neither may throw, and neither may
+ * send an empty rule set to the model — both settle on the legacy playbook.
+ */
+await test('a malformed or empty custom rule list degrades to the legacy playbook without throwing', async () => {
+	for (const [label, text] of [['broken JSON', '{broken'], ['empty string', ''], ['null literal', 'null']]) {
+		const llm = fakeLlm({ textParts: ['ENHANCED\n结果'] });
+		const { ctx, routes } = makeCtx({ llm, derived: [] });
+		assert.doesNotThrow(() => plugin.apply(ctx, { ruleSet: 'custom:c1', customRules: text }), `${label}: apply must not throw`);
+		const result = await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+		assert.equal(result.json.ok, false, `${label}: a broken list refuses instead of rewriting`);
+		assert.equal(result.json.code, 'BAD_REQUEST', `${label}: the refusal is actionable`);
+		assert.equal(llm.calls.length, 0, `${label}: nothing is sent under the legacy playbook`);
+	}
 });
 
 await test('the settings route publishes the file policy it enforces', async () => {

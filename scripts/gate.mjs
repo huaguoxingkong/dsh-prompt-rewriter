@@ -94,7 +94,8 @@ check('every relative import ships in the tarball', offArtefact.length === 0, of
 // package.json without any network source. Dev builds are exempt.
 const isDevBuild = pkg.version.includes('-');
 const changelogSrc = fs.readFileSync(`${BUNDLE}/CHANGELOG.md`, 'utf8');
-const newestHeading = /^##\s*(\d+\.\d+\.\d+)\s*$/mu.exec(changelogSrc)?.[1];
+// Keep a Changelog 1.1.0: a released section is `## [X.Y.Z] - YYYY-MM-DD`.
+const newestHeading = /^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}\s*$/mu.exec(changelogSrc)?.[1];
 if (isDevBuild) {
 	console.log('SKIP  changelog-version check (dev build)');
 } else {
@@ -123,11 +124,13 @@ if (isDevBuild) {
 	check("slot order is a calm value", seatOrder !== undefined && Number(seatOrder) >= 0 && Number(seatOrder) <= 100, `order=${seatOrder}`);
 	const seatCss = /const CSS = \[([\s\S]*?)\]\n\t\t\t\.join/u.exec(clientSrcForSeat)?.[1] ?? '';
 	const seatRules = seatCss.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
-	// A small fixed visual nudge is allowed; it must stay below the host narrow gap (8px)
-	// and must not be expressed as a negative margin or a container-width variant.
+	// The seat must not close a gap it does not own: a skin can zero the row gap, and any
+	// positive drift then runs over the model control (issue #9, 2026-11-21). The
+	// guarantee is a POSITIVE inline-end margin, which adds to whatever gap exists.
 	const nudge = /--dsh-pe-seat-nudge,(\d+)px/u.exec(clientSrcForSeat)?.[1];
-	check("visual nudge stays below host minimum gap", nudge !== undefined && Number(nudge) > 0 && Number(nudge) < 8, `nudge=${nudge}px`);
-	check("nudge is a transform, not a layout margin", /transform:translateX\(var\(--dsh-pe-seat-nudge/u.test(seatFull) && !/margin-[a-z]+:-\d/u.test(seatFull));
+	check("default seat shift is 0", nudge !== undefined && Number(nudge) === 0, `nudge=${nudge}px`);
+	check("seat guarantees a positive inline-end gap", /margin-inline-end:6px/u.test(seatFull), seatFull.slice(0, 110));
+	check("nudge stays an opt-in transform", /transform:translateX\(var\(--dsh-pe-seat-nudge/u.test(seatFull) && !/margin-[a-z]+:-\d/u.test(seatFull));
 	check("seat does not target host internals", !/standardControls|InputBar_module/u.test(seatRules));
 
 // --- 3. twist fingerprint unchanged --------------------------------------

@@ -177,6 +177,16 @@ await test('budget: five percent of the window wins when the window is small', a
 
 // --- normalizeOutput, observed through the returned text --------------------
 
+await test('plainTextItem: inline emphasis is unwrapped and the words are kept', async () => {
+  const { plainTextItem } = plugin;
+  assert.equal(typeof plainTextItem, 'function', 'the panel strips markers through this helper');
+  assert.equal(plainTextItem('**加粗**与 `代码` 混排'), '加粗与 代码 混排');
+  assert.equal(plainTextItem('两个 **重点**，一个 `a` 和一个 `b`'), '两个 重点，一个 a 和一个 b');
+  assert.equal(plainTextItem('没有标记的一行'), '没有标记的一行');
+  // A lone asterisk is ordinary text, not emphasis: it has to survive.
+  assert.equal(plainTextItem('5 * 3 = 15'), '5 * 3 = 15');
+});
+
 await test('normalizeOutput: strips a fenced block', async () => {
   const routes = [];
   const llm = {

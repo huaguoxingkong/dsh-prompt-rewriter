@@ -111,7 +111,14 @@ const main = async () => {
 		const asset = (release.assets || []).find((a) => a.name === zipName);
 		check('release ' + tag + ' carries ' + zipName, Boolean(asset), asset ? asset.size + ' B' : 'missing');
 		const localZip = path.join(BUNDLE, 'dist', zipName);
-		if (asset && fs.existsSync(localZip)) {
+		// A missing local zip used to skip the comparison and still print
+		// ALL SYNC CHECKS PASSED — a green light for an asset nobody checked. Now an
+		// absent side is its own failure, and only a real comparison can pass.
+		if (!asset) {
+			check('release zip == local zip', false, 'the release carries no ' + zipName + ', expected at ' + localZip);
+		} else if (!fs.existsSync(localZip)) {
+			check('release zip == local zip', false, 'local ' + localZip + ' is missing, cannot compare with the release asset');
+		} else {
 			const dl = await fetchAsset(asset.browser_download_url);
 			// A flaky download and a real mismatch must not look alike: report the reason.
 			if (!Buffer.isBuffer(dl)) {

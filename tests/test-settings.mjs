@@ -1126,6 +1126,38 @@ await test('the shortcut row fills in when the service registers late', async ()
 	assert.equal(binding().children?.[0], 'Ctrl+E', 'the late service must fill the row');
 });
 
+await test('the changelog lists releases only, and an unreleased line never renders', async () => {
+	requests = [];
+	about = { version: '1.9.0-dev.8', url: 'https://github.com/example/dsh-prompt-rewriter' };
+	// The host drops any heading that is not a plain three-part release before this
+	// component ever sees it, so the component is handed releases only.
+	changelog = [
+		{ version: '1.8.4', items: ['命令块不再被改写'] },
+		{ version: '1.8.3', items: ['快捷键服务缺失不再整体失效'] },
+	];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	const tree = render(settings.component, { t });
+	const nodes = flatten(tree);
+
+	const badges = nodes.filter((n) => n.props?.className === 'dsh-pe-changelogBadge');
+	assert.deepEqual(badges.map((b) => b.children[0]), ['v1.8.4', 'v1.8.3'], 'only published versions are listed');
+
+	// No dev affordance may survive the revert.
+	assert.equal(nodes.filter((n) => n.props?.className === 'dsh-pe-changelogDev').length, 0, 'no dev badge');
+	assert.equal(nodes.filter((n) => 'data-dev' in (n.props ?? {})).length, 0, 'no dev flag reaches the DOM');
+	const source = fs.readFileSync(path.join(here, '..', 'client.js'), 'utf8');
+	assert.equal(/settings\.changelog\.dev/u.test(source), false, 'the dev label is gone from both locales');
+
+	// 最新 belongs to the newest RELEASE, which is the first row now.
+	const latest = nodes.filter((n) => n.props?.className === 'dsh-pe-changelogLatest');
+	assert.equal(latest.length, 1, 'exactly one row carries the Latest tag');
+	const entries = nodes.filter((n) => n.props?.className === 'dsh-pe-changelogEntry');
+	assert.equal(entries[0].props['data-latest'], 'true', 'the newest published release keeps the tag');
+	assert.equal(entries[1].props['data-latest'], 'false');
+});
+
 await test('the changelog renders as a card timeline with the newest expanded', async () => {
 	requests = [];
 	about = { version: '1.7.0-dev.2', url: 'https://github.com/example/dsh-prompt-rewriter' };
@@ -1226,6 +1258,614 @@ await test('an empty changelog renders no panel', async () => {
 	await sleep(0);
 	tree = render(settings.component, { t });
 	assert.equal(flatten(tree).some((n) => n.props?.className === 'dsh-pe-changelog'), false);
+});
+
+/** Open the custom-rule editor from the rule row and return the re-rendered tree. */
+async function openCustomModal(component) {
+	let opened = render(component, { t });
+	const add = flatten(opened).find((n) => n.props?.className === 'dsh-pe-addRule');
+	assert.ok(add !== undefined, 'the add button must exist in the rule row');
+	add.props.onClick();
+	await sleep(0);
+	return render(component, { t });
+}
+
+await test('a stored custom rule appears as custom:<id> in the select, and only inside the modal', async () => {
+	requests = [];
+	const rule = { id: 'c1', name: '我的规则', body: 'RULE: x', enabled: true, order: 0 };
+	stored = { ruleSet: 'custom:c1', customRules: JSON.stringify([rule]) };
+	const settings = settingsOf(install());
+	let tree = mount(settings.component, { t });
+	await sleep(0);
+	tree = render(settings.component, { t });
+	const nodes = flatten(tree);
+
+	const select = nodes.filter((n) => n.props?.className === 'dsh-pe-select').at(-1);
+	const optionValues = flatten(select).filter((n) => n.type === 'option').map((option) => option.props?.value);
+	assert.deepEqual(optionValues, ['legacy', 'intent-first', 'workbuddy', 'custom:c1'], 'the stored rule is offered by id');
+	assert.equal(select.props.value, 'custom:c1', 'the select shows the stored selection');
+
+	// Nothing of the editor is on the page until the row entry is pressed.
+	assert.equal(nodes.some((n) => n.props?.['data-rule'] === 'custom'), false, 'no persistent custom card');
+	assert.equal(nodes.some((n) => n.props?.className === 'dsh-pe-modalOverlay'), false, 'no modal before it is opened');
+
+	const opened = await openCustomModal(settings.component);
+	const modal = flatten(opened).find((n) => n.props?.className === 'dsh-pe-modal');
+	assert.ok(modal !== undefined, 'the modal opens from the row entry');
+	const names = flatten(modal).filter((n) => n.props?.className === 'dsh-pe-customRuleName').map((n) => n.children?.[0]);
+	assert.deepEqual(names, ['我的规则'], 'the stored name is what the user reads, not the id');
+});
+
+/**
+ * Deleting a rule is the only interaction that writes TWO keys at once when the rule
+ * is in use. A half-applied write would leave the selection pointing at nothing, so
+ * the single-POST shape is asserted here rather than left to the Host's refusal.
+ */
+await test('deleting the rule in use posts both keys once; deleting an idle one leaves ruleSet alone', async () => {
+	const ruleA = { id: 'c1', name: '规则一', body: 'RULE: a', enabled: true, order: 0 };
+	const ruleB = { id: 'c2', name: '规则二', body: 'RULE: b', enabled: true, order: 1 };
+	const posts = () => requests.filter((entry) => entry.init?.method === 'POST');
+
+	// --- case 1: delete the rule that is currently selected -------------------
+	stored = { ruleSet: 'custom:c1', customRules: JSON.stringify([ruleA, ruleB]) };
+	requests = [];
+	const settings = settingsOf(install());
+	let tree = mount(settings.component, { t });
+	await sleep(0);
+	tree = render(settings.component, { t });
+	tree = await openCustomModal(settings.component);
+
+	let deletes = flatten(tree).filter((n) => n.props?.className === 'dsh-pe-customAct' && n.children?.[0] === 'settings.rules.custom.delete');
+	assert.equal(deletes.length, 2, 'one delete button per stored rule');
+	assert.equal(flatten(tree).filter((n) => n.props?.className === 'dsh-pe-customListHead').length, 1, 'the stored rules sit under a named heading, not loose in the modal');
+	deletes[0].props.onClick();
+	await sleep(0);
+	tree = render(settings.component, { t });
+
+	// 删除 is irreversible, so the first click only arms it and says what it will do.
+	assert.equal(posts().length, 0, 'the first click arms the button instead of deleting');
+	const armed = flatten(tree).filter((n) => n.children?.[0] === 'settings.rules.custom.deleteConfirm');
+	assert.equal(armed.length, 1, 'the clicked button now asks for a confirmation');
+	assert.ok(armed[0].props.className.includes('dsh-pe-customActDanger'), 'the armed button is marked as destructive');
+	armed[0].props.onClick();
+	await sleep(0);
+	tree = render(settings.component, { t });
+
+	assert.equal(posts().length, 1, 'one request, not two');
+	const body = JSON.parse(posts()[0].init.body);
+	assert.deepEqual(Object.keys(body).sort(), ['customRules', 'ruleSet'], 'both keys travel together');
+	assert.deepEqual(JSON.parse(body.customRules).map((rule) => rule.id), ['c2'], 'the deleted rule is gone from the list');
+	assert.equal(body.ruleSet, 'legacy', 'the selection falls back inside the same write');
+
+	// --- case 2: the select no longer offers the deleted rule -----------------
+	const select = flatten(tree).filter((n) => n.props?.className === 'dsh-pe-select').at(-1);
+	const optionValues = flatten(select).filter((n) => n.type === 'option').map((option) => option.props?.value);
+	assert.deepEqual(optionValues, ['legacy', 'intent-first', 'workbuddy', 'custom:c2'], 'the deleted option is gone');
+	assert.equal(select.props.value, 'legacy', 'the shown selection equals the fallback the Host stored');
+
+	// --- case 3: deleting a rule that is NOT in use must not touch the choice --
+	stored = { ruleSet: 'custom:c1', customRules: JSON.stringify([ruleA, ruleB]) };
+	requests = [];
+	const second = settingsOf(install());
+	let other = mount(second.component, { t });
+	await sleep(0);
+	other = render(second.component, { t });
+	other = await openCustomModal(second.component);
+
+	deletes = flatten(other).filter((n) => n.props?.className === 'dsh-pe-customAct' && n.children?.[0] === 'settings.rules.custom.delete');
+	deletes[1].props.onClick();
+	await sleep(0);
+	other = render(second.component, { t });
+	flatten(other).filter((n) => n.children?.[0] === 'settings.rules.custom.deleteConfirm')[0].props.onClick();
+	await sleep(0);
+	render(second.component, { t });
+
+	assert.equal(posts().length, 1, 'still one request');
+	const idleBody = JSON.parse(posts()[0].init.body);
+	assert.equal('ruleSet' in idleBody, false, 'an idle delete never rewrites the user choice');
+	assert.deepEqual(JSON.parse(idleBody.customRules).map((rule) => rule.id), ['c1'], 'only the idle rule is removed');
+});
+
+/**
+ * The enable/disable toggle writes the same two-key shape as delete when the rule is
+ * in use, and only one key when it is not. Both directions are asserted here.
+ */
+await test('disabling the rule in use falls back in one write; disabling an idle one leaves ruleSet alone', async () => {
+	const ruleA = { id: 'c1', name: '规则一', body: 'RULE: a', enabled: true, order: 0 };
+	const ruleB = { id: 'c2', name: '规则二', body: 'RULE: b', enabled: true, order: 1 };
+	const posts = () => requests.filter((entry) => entry.init?.method === 'POST');
+	const toggles = (tree) => flatten(tree).filter((n) => n.props?.className === 'dsh-pe-customAct dsh-pe-customToggle');
+
+	// --- case 1: disable the rule that is currently selected -------------------
+	stored = { ruleSet: 'custom:c1', customRules: JSON.stringify([ruleA, ruleB]) };
+	requests = [];
+	const settings = settingsOf(install());
+	let tree = mount(settings.component, { t });
+	await sleep(0);
+	tree = render(settings.component, { t });
+	tree = await openCustomModal(settings.component);
+
+	let buttons = toggles(tree);
+	assert.equal(buttons.length, 2, 'one toggle per stored rule');
+	buttons[0].props.onClick();
+	await sleep(0);
+	tree = render(settings.component, { t });
+
+	assert.equal(posts().length, 1, 'one request, not two');
+	const body = JSON.parse(posts()[0].init.body);
+	assert.deepEqual(Object.keys(body).sort(), ['customRules', 'ruleSet'], 'both keys travel together');
+	assert.equal(body.ruleSet, 'legacy', 'the selection falls back inside the same write');
+	const storedList = JSON.parse(body.customRules);
+	assert.equal(storedList[0].enabled, false, 'the rule is stored as disabled');
+	assert.equal(storedList[1].enabled, true, 'the other rule is untouched');
+
+	const select = flatten(tree).filter((n) => n.props?.className === 'dsh-pe-select').at(-1);
+	const optionValues = flatten(select).filter((n) => n.type === 'option').map((option) => option.props?.value);
+	assert.deepEqual(optionValues, ['legacy', 'intent-first', 'workbuddy', 'custom:c2'], 'a disabled rule leaves the dropdown');
+	assert.equal(select.props.value, 'legacy', 'the shown selection equals the fallback the Host stored');
+
+	// --- case 2: disabling a rule that is NOT in use --------------------------
+	stored = { ruleSet: 'custom:c1', customRules: JSON.stringify([ruleA, ruleB]) };
+	requests = [];
+	const second = settingsOf(install());
+	let other = mount(second.component, { t });
+	await sleep(0);
+	other = render(second.component, { t });
+	other = await openCustomModal(second.component);
+
+	buttons = toggles(other);
+	buttons[1].props.onClick();
+	await sleep(0);
+	render(second.component, { t });
+
+	assert.equal(posts().length, 1, 'still one request');
+	const idleBody = JSON.parse(posts()[0].init.body);
+	assert.deepEqual(Object.keys(idleBody).sort(), ['customRules'], 'an idle toggle never rewrites the user choice');
+	assert.equal(JSON.parse(idleBody.customRules)[1].enabled, false, 'only the toggled rule changed');
+});
+
+/**
+ * Discoverability: a feature that only appears after opening a dropdown is a hidden
+ * feature. The entry is asserted structurally — in the rule row, outside the collapsed
+ * comparison block, with no extra row and no extra card.
+ */
+await test('the custom-rule entry is visible in the rule row and outside the collapsed block', async () => {
+	stored = { ruleSet: 'legacy', customRules: '[]' };
+	requests = [];
+	const settings = settingsOf(install());
+	let tree = mount(settings.component, { t });
+	await sleep(0);
+	tree = render(settings.component, { t });
+
+	const nodes = flatten(tree);
+	const rowNode = nodes.find((n) => n.props?.['data-row'] === 'ruleSet');
+	assert.ok(rowNode !== undefined, 'the rule-set row exists');
+	const addButton = flatten(rowNode).find((n) => n.props?.className === 'dsh-pe-addRule');
+	assert.ok(addButton !== undefined, 'the add button lives in the rule row itself');
+
+	const detailsNode = flatten(rowNode).find((n) => n.props?.className === 'dsh-pe-rulesMore');
+	assert.ok(detailsNode !== undefined, 'the comparison block is still present');
+	assert.equal(flatten(detailsNode).some((n) => n.props?.className === 'dsh-pe-addRule'), false, 'the entry is not inside the collapsed block');
+
+	// No new card and no new row: the page still has exactly the same six rows.
+	const rows = nodes.filter((n) => n.props?.['data-row'] !== undefined);
+	assert.deepEqual(rows.map((r) => r.props['data-row']), ['model', 'ruleSet', 'context', 'images', 'files', 'shortcut']);
+	assert.equal(flatten(rowNode).filter((n) => n.props?.className === 'dsh-pe-addRuleBadge').length, 0, 'no badge while there are zero rules');
+});
+
+await test('the add-rule badge shows how many custom rules exist', async () => {
+	const rule = { id: 'c1', name: '我的规则', body: 'RULE: x', enabled: true, order: 0 };
+	stored = { ruleSet: 'legacy', customRules: JSON.stringify([rule]) };
+	requests = [];
+	const settings = settingsOf(install());
+	let tree = mount(settings.component, { t });
+	await sleep(0);
+	tree = render(settings.component, { t });
+
+	const rowNode = flatten(tree).find((n) => n.props?.['data-row'] === 'ruleSet');
+	const badge = flatten(rowNode).find((n) => n.props?.className === 'dsh-pe-addRuleBadge');
+	assert.ok(badge !== undefined, 'a badge appears once a rule exists');
+	assert.equal(badge.children?.[0], '1', 'the badge counts the stored rules');
+});
+
+/**
+ * The editor is a modal now: it exists only while open, it carries every capability
+ * the old block had, it scrolls on its own, and closing never writes.
+ */
+await test('the add-rule entry opens a modal with the copy, paste, name and save controls', async () => {
+	stored = { ruleSet: 'legacy', customRules: '[]' };
+	requests = [];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	const tree = await openCustomModal(settings.component);
+	const nodes = flatten(tree);
+
+	const overlay = nodes.find((n) => n.props?.className === 'dsh-pe-modalOverlay');
+	assert.ok(overlay !== undefined, 'the overlay mounts on open');
+	const modal = nodes.find((n) => n.props?.className === 'dsh-pe-modal');
+	assert.equal(modal.props.role, 'dialog', 'the modal is a dialog');
+	assert.equal(modal.props['aria-modal'], 'true');
+
+	const modalBody = nodes.find((n) => n.props?.className === 'dsh-pe-modalBody');
+	assert.ok(modalBody !== undefined, 'the body is its own scroll container');
+	for (const [label, className] of [
+		['copy', 'dsh-pe-customCopy'],
+		['paste box', 'dsh-pe-customBody'],
+		['name input', 'dsh-pe-input dsh-pe-customName'],
+		['save', 'dsh-pe-customSave'],
+		['cancel', 'dsh-pe-customCancel'],
+		['close', 'dsh-pe-modalClose'],
+	]) {
+		assert.ok(flatten(modalBody).concat(flatten(modal)).some((n) => n.props?.className === className), `the modal offers the ${label} control`);
+	}
+	// 保存并启用 lives inside the scrolling body, so a short window cannot hide it.
+	assert.ok(flatten(modalBody).some((n) => n.props?.className === 'dsh-pe-customSave'), 'save sits inside the scrollable body');
+	// The copy fallbacks are unchanged: the readonly field is selectable for manual copy.
+	const meta = flatten(modalBody).find((n) => n.props?.className === 'dsh-pe-customMeta');
+	assert.equal(meta.props.readOnly, true, 'the meta prompt stays a readonly, selectable field');
+	assert.ok(source.match(/\.dsh-pe-modalBody\{[^}]*overflow:auto/u) !== null, 'the body CSS really scrolls');
+});
+
+await test('saving from the modal closes it and selects the new custom rule', async () => {
+	stored = { ruleSet: 'legacy', customRules: '[]' };
+	requests = [];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	let tree = await openCustomModal(settings.component);
+
+	let nameInput = flatten(tree).find((n) => n.props?.className === 'dsh-pe-input dsh-pe-customName');
+	nameInput.props.onInput({ target: { value: '新规则' } });
+	await sleep(0);
+	tree = render(settings.component, { t });
+
+	let bodyArea = flatten(tree).find((n) => n.props?.className === 'dsh-pe-customBody');
+	bodyArea.props.onInput({ target: { value: '```\nRULE: hello\n```' } });
+	await sleep(0);
+	tree = render(settings.component, { t });
+
+	const saveButton = flatten(tree).find((n) => n.props?.className === 'dsh-pe-customSave');
+	saveButton.props.onClick();
+	// The panel now leaves through a 200ms transition before it unmounts.
+	await sleep(320);
+	tree = render(settings.component, { t });
+
+	const nodes = flatten(tree);
+	assert.equal(nodes.some((n) => n.props?.className === 'dsh-pe-modalOverlay'), false, 'the modal closes after a successful save');
+	const select = nodes.filter((n) => n.props?.className === 'dsh-pe-select').at(-1);
+	assert.match(String(select.props.value), /^custom:c/u, 'the select switches to the new rule');
+	const saved = JSON.parse(stored.customRules);
+	assert.equal(saved.length, 1, 'the rule is stored');
+	assert.equal(saved[0].body, 'RULE: hello', 'the pasted fence is stripped before saving');
+	assert.equal(saved[0].name, '新规则', 'the typed name is kept');
+});
+
+await test('closing the modal by cancel, Esc or backdrop never writes', async () => {
+	stored = { ruleSet: 'legacy', customRules: '[]' };
+	requests = [];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	let tree = await openCustomModal(settings.component);
+
+	// cancel button
+	let cancel = flatten(tree).find((n) => n.props?.className === 'dsh-pe-customCancel');
+	cancel.props.onClick();
+	await sleep(320);
+	tree = render(settings.component, { t });
+	assert.equal(flatten(tree).some((n) => n.props?.className === 'dsh-pe-modalOverlay'), false, 'cancel closes the modal');
+
+	// Esc
+	tree = await openCustomModal(settings.component);
+	const dialog = flatten(tree).find((n) => n.props?.className === 'dsh-pe-modal');
+	dialog.props.onKeyDown({ key: 'Escape' });
+	await sleep(320);
+	tree = render(settings.component, { t });
+	assert.equal(flatten(tree).some((n) => n.props?.className === 'dsh-pe-modalOverlay'), false, 'Esc closes the modal');
+
+	// backdrop: a press AND click whose target IS the overlay closes; either alone does not
+	tree = await openCustomModal(settings.component);
+	let overlay = flatten(tree).find((n) => n.props?.className === 'dsh-pe-modalOverlay');
+	overlay.props.onMouseDown({ target: 'inside', currentTarget: 'overlay' });
+	overlay.props.onClick({ target: 'inside', currentTarget: 'overlay' });
+	await sleep(0);
+	tree = render(settings.component, { t });
+	assert.ok(flatten(tree).some((n) => n.props?.className === 'dsh-pe-modalOverlay'), 'a click inside the dialog keeps it open');
+
+	overlay = flatten(tree).find((n) => n.props?.className === 'dsh-pe-modalOverlay');
+	overlay.props.onMouseDown({ target: 'overlay', currentTarget: 'overlay' });
+	overlay.props.onClick({ target: 'overlay', currentTarget: 'overlay' });
+	await sleep(320);
+	tree = render(settings.component, { t });
+	assert.equal(flatten(tree).some((n) => n.props?.className === 'dsh-pe-modalOverlay'), false, 'a backdrop click closes the modal');
+
+	assert.equal(requests.filter((entry) => entry.init?.method === 'POST').length, 0, 'no write happened through any close path');
+});
+
+await test('a selection drag that ends on the backdrop keeps the panel open', async () => {
+	// Selecting text in the rule body and releasing the mouse outside the panel used to
+	// end as a click whose target was the overlay, closing the editor mid-selection.
+	stored = { ruleSet: 'legacy', customRules: '[]' };
+	requests = [];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	let tree = await openCustomModal(settings.component);
+
+	let overlay = flatten(tree).find((n) => n.props?.className === 'dsh-pe-modalOverlay');
+	overlay.props.onMouseDown({ target: 'inside', currentTarget: 'overlay' });
+	overlay.props.onClick({ target: 'overlay', currentTarget: 'overlay' });
+	await sleep(320);
+	tree = render(settings.component, { t });
+	assert.ok(flatten(tree).some((n) => n.props?.className === 'dsh-pe-modalOverlay'), 'releasing a selection outside keeps the panel');
+
+	overlay = flatten(tree).find((n) => n.props?.className === 'dsh-pe-modalOverlay');
+	overlay.props.onMouseDown({ target: 'overlay', currentTarget: 'overlay' });
+	overlay.props.onClick({ target: 'overlay', currentTarget: 'overlay' });
+	await sleep(320);
+	tree = render(settings.component, { t });
+	assert.equal(flatten(tree).some((n) => n.props?.className === 'dsh-pe-modalOverlay'), false, 'a press that began on the backdrop still closes it');
+});
+
+await test('pasting never closes the panel, and an unsaved draft survives a host remount', async () => {
+	stored = { ruleSet: 'legacy', customRules: '[]' };
+	requests = [];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	let tree = await openCustomModal(settings.component);
+
+	const pasted = '无论草稿是什么，都只输出这两行：ENHANCED 和一行 1';
+	let bodyArea = flatten(tree).find((n) => n.props?.className === 'dsh-pe-customBody');
+	bodyArea.props.onInput({ target: { value: pasted } });
+	await sleep(0);
+	tree = render(settings.component, { t });
+	assert.ok(flatten(tree).some((n) => n.props?.className === 'dsh-pe-modalOverlay'), 'a paste into the body keeps the panel open');
+
+	// The host re-creates the section on some focus changes; the draft must come back.
+	mount(settings.component, { t });
+	await sleep(0);
+	tree = render(settings.component, { t });
+	const reopened = flatten(tree).find((n) => n.props?.className === 'dsh-pe-customBody');
+	assert.ok(reopened !== undefined, 'the unsaved draft reopens after a remount');
+	assert.equal(reopened.props.value, pasted, 'the typed body is intact');
+
+	// This store is module-level, so the test has to leave it empty for the next one.
+	flatten(tree).find((n) => n.props?.className === 'dsh-pe-customCancel').props.onClick();
+	await sleep(320);
+	tree = render(settings.component, { t });
+	assert.equal(flatten(tree).some((n) => n.props?.className === 'dsh-pe-modalOverlay'), false, 'an explicit close clears the stored draft');
+});
+
+/**
+ * "My rule reset itself to WorkBuddy": a stored selection whose rule no longer exists
+ * has no option to sit in, and a bare <select> then displays its first built-in option
+ * — which reads as a reset and invites a click that writes that built-in for real.
+ */
+await test('a selection whose rule is gone stays visible instead of showing a built-in', async () => {
+	stored = { ruleSet: 'custom:gone', customRules: '[]' };
+	requests = [];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	const tree = render(settings.component, { t });
+	const select = flatten(tree).filter((n) => n.props?.className === 'dsh-pe-select').at(-1);
+	assert.equal(select.props.value, 'custom:gone', 'the stored selection is kept, not silently swapped');
+	const dead = flatten(select).find((n) => n.type === 'option' && n.props?.value === 'custom:gone');
+	assert.ok(dead !== undefined, 'the dead selection gets an option of its own');
+	assert.equal(dead.props.disabled, true, 'it cannot be re-picked from the list');
+	assert.equal(dead.children?.[0], 'settings.rules.custom.unavailable', 'the option says why it is unusable');
+	assert.equal(requests.filter((entry) => entry.init?.method === 'POST').length, 0, 'rendering it writes nothing');
+});
+
+/** The dropdown is the only writer of `ruleSet`: it must write only a real change. */
+await test('a select that reports the value it already holds writes nothing', async () => {
+	stored = {
+		ruleSet: 'custom:c1',
+		customRules: JSON.stringify([{ id: 'c1', name: '我的规则', body: 'RULE: x', enabled: true, order: 0 }]),
+	};
+	requests = [];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	let tree = render(settings.component, { t });
+	const posts = () => requests.filter((entry) => entry.init?.method === 'POST');
+	const select = () => flatten(render(settings.component, { t }))
+		.filter((n) => n.props?.className === 'dsh-pe-select').at(-1);
+
+	select().props.onChange({ target: { value: 'custom:c1' } });
+	await sleep(0);
+	assert.equal(posts().length, 0, 'an unchanged value is not a write');
+
+	select().props.onChange({ target: { value: 'workbuddy' } });
+	await sleep(0);
+	assert.equal(posts().length, 1, 'a real change still writes');
+	assert.equal(JSON.parse(posts()[0].init.body).ruleSet, 'workbuddy');
+});
+
+/**
+ * Every clickable control in the modal and the settings page must answer "can I click
+ * this" the same way. Read from the CSS the browser actually receives, so dropping a
+ * state (or reintroducing a layout-shifting transition) fails here.
+ */
+await test('every button carries a hover and a keyboard focus state, with no layout shift', async () => {
+	stored = { ruleSet: 'legacy', customRules: '[]' };
+	requests = [];
+	settingsOf(install());
+	const css = document.head.children.at(-1).textContent;
+	const classes = [
+		'dsh-pe-customAct', 'dsh-pe-customCopy', 'dsh-pe-customSave', 'dsh-pe-customCancel',
+		'dsh-pe-modalClose', 'dsh-pe-addRule', 'dsh-pe-binding', 'dsh-pe-switch', 'dsh-pe-reset', 'dsh-pe-changelogRow',
+	];
+	for (const name of classes) {
+		assert.ok(css.includes(`.${name}:hover`), `${name} has a hover rule`);
+		assert.ok(css.includes(`.${name}:focus-visible`), `${name} has a keyboard focus rule`);
+	}
+	// The host's own interactive fill is what makes these read as native buttons.
+	assert.ok(css.includes('--dsw-alias-interactive-bg-hover'), 'hover uses the host interactive token');
+	assert.ok(css.includes('outline:2px solid'), 'focus is a real outline, visible at 2px offset');
+	assert.ok(css.includes('outline-offset:2px'), 'the ring sits clear of the border');
+	// A hover that resizes anything would move the row (issue #9 territory).
+	const transitions = css.match(/transition:[^;}]*/gu) ?? [];
+	assert.ok(transitions.length > 0, 'the controls animate something');
+	for (const rule of transitions) {
+		assert.equal(/width|height|padding|margin/u.test(rule), false, `no layout property in "${rule}"`);
+	}
+});
+
+await test('the panel fades in and out instead of appearing instantly', async () => {
+	stored = { ruleSet: 'legacy', customRules: '[]' };
+	requests = [];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	let tree = await openCustomModal(settings.component);
+	const open = flatten(tree).find((n) => n.props?.className === 'dsh-pe-modalOverlay');
+	assert.equal(open.props['data-open'], 'true', 'the open state drives the entrance transition');
+
+	flatten(tree).find((n) => n.props?.className === 'dsh-pe-customCancel').props.onClick();
+	tree = render(settings.component, { t });
+	const leaving = flatten(tree).find((n) => n.props?.className === 'dsh-pe-modalOverlay');
+	assert.ok(leaving !== undefined, 'the node stays mounted while the exit transition runs');
+	assert.equal(leaving.props['data-open'], 'false', 'the exit runs before the node is removed');
+
+	// The exit is deliberately shorter than the entrance, and the node must outlive it:
+	// tearing it down on the same tick is what "it just vanishes" looked like.
+	await sleep(140);
+	tree = render(settings.component, { t });
+	assert.ok(flatten(tree).some((n) => n.props?.className === 'dsh-pe-modalOverlay'), 'the node is still mounted 140ms into the 180ms exit');
+	assert.equal(leaving.props['data-leaving'], 'true', 'the shorter exit duration is selected through a data attribute');
+
+	await sleep(320);
+	tree = render(settings.component, { t });
+	assert.equal(flatten(tree).some((n) => n.props?.className === 'dsh-pe-modalOverlay'), false, 'the node is removed once the transition ends');
+
+	// The declarations the browser actually receives, read back off the installed
+	// <style>: a runtime read of the real CSS, so deleting a transition fails here.
+	const css = document.head.children.at(-1).textContent;
+	assert.match(css, /\.dsh-pe-modalOverlay\{[^}]*transition:opacity 240ms cubic-bezier\(\.2,\.8,\.2,1\)/u, 'the backdrop fades in over 240ms on the shared curve');
+	assert.match(css, /\.dsh-pe-modal\{[^}]*transform:translateY\(8px\) scale\(\.96\)[^}]*transition:opacity 240ms/u, 'the card starts 8px low and 4% small');
+	assert.match(css, /\[data-open="true"\] \.dsh-pe-modal\{opacity:1;transform:none\}/u, 'the open state is the resting position');
+	assert.match(css, /\[data-leaving="true"\][^{]*\{transition-duration:180ms\}/u, 'the exit runs at 180ms');
+	assert.ok(css.includes('prefers-reduced-motion:reduce'), 'reduced motion turns the transition off');
+	// The flip has to wait for the second frame: a flip one frame after the first paint is
+	// coalesced away by the browser and the transition never runs.
+	assert.ok(source.match(/second = requestAnimationFrame\(\(\) =>/u) !== null, 'the open state flips on the second frame');
+	assert.ok(source.match(/data-open/gu) !== null, 'the state reaches CSS through a data attribute');
+});
+
+/**
+ * A new rule opens EMPTY. The example that used to be pre-filled looked like the user's
+ * own rule and could be saved by accident; guidance now lives in the placeholder, which
+ * cannot be submitted.
+ */
+await test('a new rule opens empty, refuses an empty save, and an edit still loads its body', async () => {
+	stored = { ruleSet: 'legacy', customRules: '[]' };
+	requests = [];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	let tree = await openCustomModal(settings.component);
+	const bodyOf = (rendered) => flatten(rendered).find((n) => n.props?.className === 'dsh-pe-customBody');
+	const body = bodyOf(tree);
+	assert.ok(body !== undefined, 'the body field is on screen');
+	assert.equal(body.props.value, '', 'a new rule must not be pre-filled');
+	assert.equal(body.props.placeholder, 'settings.rules.custom.bodyPlaceholder', 'the guidance moved to the placeholder');
+
+	// An empty body cannot become a rule: the page refuses locally and posts nothing.
+	const saveBtn = flatten(tree).find((n) => n.props?.className === 'dsh-pe-customSave');
+	assert.ok(saveBtn !== undefined, 'the save button is on screen');
+	saveBtn.props.onClick();
+	await sleep(0);
+	tree = render(settings.component, { t });
+	assert.equal(requests.filter((entry) => entry.init?.method === 'POST').length, 0, 'an empty body is never posted');
+	assert.ok(flatten(tree).some((n) => n.children?.[0] === 'settings.rules.custom.bodyRequired'), 'the reason is shown next to the field');
+
+	// Closing this draft leaves the module-level store empty for the next case.
+	flatten(tree).find((n) => n.props?.className === 'dsh-pe-customCancel').props.onClick();
+	await sleep(320);
+
+	// Editing an existing rule still fills its body verbatim.
+	stored = {
+		ruleSet: 'custom:c1',
+		customRules: JSON.stringify([{ id: 'c1', name: '我的规则', body: 'RULE: 保留这句', enabled: true, order: 0 }]),
+	};
+	mount(settings.component, { t });
+	await sleep(0);
+	// The list lives inside the modal, so it is opened first and the row's 编辑 is
+	// what loads the stored body into the same field.
+	const opened = await openCustomModal(settings.component);
+	const editBtn = flatten(opened).find((n) => n.children?.[0] === 'settings.rules.custom.edit');
+	assert.ok(editBtn !== undefined, 'the row offers an edit control');
+	editBtn.props.onClick();
+	await sleep(0);
+	tree = render(settings.component, { t });
+	assert.equal(bodyOf(tree).props.value, 'RULE: 保留这句', 'editing loads the stored body, not an empty box');
+
+	flatten(tree).find((n) => n.props?.className === 'dsh-pe-customCancel').props.onClick();
+	await sleep(320);
+});
+
+/**
+ * An armed 删除 must not survive the modal: reopening it has to show the plain label
+ * again, otherwise the next single click would delete a rule nobody asked to delete.
+ */
+await test('the open state flips on the second frame, never on the first', async () => {
+	// A flip one frame after the first paint is coalesced away by the browser and the
+	// transition never runs — the exact "it still looks the same" report. Driving the
+	// frames by hand makes a one-frame implementation fail here instead of passing on a
+	// string match.
+	stored = { ruleSet: 'legacy', customRules: '[]' };
+	requests = [];
+	const settings = settingsOf(install());
+	const frames = [];
+	const savedRaf = globalThis.requestAnimationFrame;
+	const savedCancel = globalThis.cancelAnimationFrame;
+	globalThis.requestAnimationFrame = (cb) => { frames.push(cb); return 700 + frames.length; };
+	globalThis.cancelAnimationFrame = () => {};
+	try {
+		mount(settings.component, { t });
+		await sleep(0);
+		await openCustomModal(settings.component);
+		assert.equal(frames.length, 1, 'opening asks for one frame');
+		frames.shift()();
+		assert.equal(frames.length, 1, 'the flip waits for a second frame');
+		frames.shift()();
+		const tree = render(settings.component, { t });
+		const open = flatten(tree).find((n) => n.props?.className === 'dsh-pe-modalOverlay');
+		assert.equal(open.props['data-open'], 'true', 'the second frame is what opens the panel');
+	} finally {
+		globalThis.requestAnimationFrame = savedRaf;
+		globalThis.cancelAnimationFrame = savedCancel;
+	}
+});
+
+await test('closing the modal disarms a pending delete', async () => {
+	stored = {
+		ruleSet: 'legacy',
+		customRules: JSON.stringify([{ id: 'c1', name: '规则一', body: 'RULE: a', enabled: true, order: 0 }]),
+	};
+	requests = [];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	let tree = await openCustomModal(settings.component);
+
+	flatten(tree).find((n) => n.children?.[0] === 'settings.rules.custom.delete').props.onClick();
+	await sleep(0);
+	tree = render(settings.component, { t });
+	assert.equal(flatten(tree).filter((n) => n.children?.[0] === 'settings.rules.custom.deleteConfirm').length, 1, 'the button is armed before the close');
+
+	const dialog = flatten(tree).find((n) => n.props?.className === 'dsh-pe-modal');
+	dialog.props.onKeyDown({ key: 'Escape' });
+	await sleep(320);
+	tree = render(settings.component, { t });
+	tree = await openCustomModal(settings.component);
+
+	assert.equal(flatten(tree).filter((n) => n.children?.[0] === 'settings.rules.custom.deleteConfirm').length, 0, 'the reopened modal shows the plain 删除 again');
+	assert.equal(flatten(tree).filter((n) => n.children?.[0] === 'settings.rules.custom.delete').length, 1, 'one unarmed delete button per rule');
+	assert.equal(requests.filter((entry) => entry.init?.method === 'POST').length, 0, 'disarming writes nothing');
 });
 
 console.log(failures === 0 ? '\nALL SETTINGS TESTS PASSED' : `\n${failures} SETTINGS TEST(S) FAILED`);

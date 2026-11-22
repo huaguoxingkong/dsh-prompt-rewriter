@@ -644,6 +644,18 @@ await test('shows a busy spinner while the host is working, then offers the undo
 	assert.equal(doneButton.props['aria-label'], 'label.undo');
 });
 
+await test('a one-character rewrite lands in the composer (the custom-rule smoke test)', async () => {
+	// "Output ENHANCED plus one line 1" is the shortest way to prove a custom rule ran;
+	// the result has to reach the editor, not be treated as an empty reply.
+	nextResponse = { body: { ok: true, kind: 'enhanced', text: '1', model: 'p1 / m1' } };
+	const helper = makeHelpers({ draft: '做个图', draftRev: 1 });
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, helper.props);
+	findButton(mounted.tree).props.onClick();
+	await sleep(0);
+	assert.equal(helper.writes.length, 1, 'the write happens');
+	assert.equal(helper.writes[0].text, '1', 'one character is a real rewrite');
+});
+
 await test('the undo button restores the exact pre-enhancement prompt', async () => {
 	nextResponse = { body: { ok: true, text: '增强后的提示词' } };
 	const helper = makeHelpers({ draft: '原始草稿', draftRev: 4 });
@@ -1255,6 +1267,70 @@ await test('the mark is hidden while a run is in flight', async () => {
 	assert.equal(mark(), 'false', 'no "next click" exists while running, so the mark hides');
 	release();
 	await sleep(0);
+});
+
+/**
+ * "Did my custom rule actually apply?" has to be answerable from the screen. The line
+ * is built from what the Host already reports (ruleSet + kind), so it costs no second
+ * model call and cannot disagree with the request that ran.
+ */
+await test('the run status names the custom rule that produced the rewrite', async () => {
+	nextResponse = { body: { ok: true, kind: 'enhanced', text: '改好的提示词', ruleSet: 'custom:c1', ruleName: '我的规则', mode: 'plain' } };
+	const helper = makeHelpers();
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, helper.props);
+	findButton(mounted.tree).props.onClick();
+	await sleep(0);
+	const tree = mounted.rerender().tree;
+	const badge = flatten(tree).find((node) => node.props?.className === 'dsh-pe_status');
+	assert.ok(badge !== undefined, 'a finished run must say which rule set ran');
+	assert.match(textOf(badge), /state\.status\.custom/u, 'the custom branch is reported');
+	assert.match(textOf(badge), /我的规则/u, 'the rule is named, not just its id');
+});
+
+await test('an UNCHANGED answer is reported as such, not left to guesswork', async () => {
+	nextResponse = { body: { ok: true, kind: 'unchanged', text: '做个图', ruleSet: 'custom:c1', ruleName: '我的规则', mode: 'plain' } };
+	const helper = makeHelpers();
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, helper.props);
+	findButton(mounted.tree).props.onClick();
+	await sleep(0);
+	const tree = mounted.rerender().tree;
+	const badge = flatten(tree).find((node) => node.props?.className === 'dsh-pe_status');
+	assert.ok(badge !== undefined, 'an unchanged answer still reports something');
+	assert.match(textOf(badge), /state\.status\.unchanged/u, 'the no-op branch is stated explicitly');
+});
+
+await test('an UNCHANGED answer shows one floating status, never the old inline notice', async () => {
+	nextResponse = { body: { ok: true, kind: 'unchanged', text: '做个图', ruleSet: 'custom:c1', ruleName: '我的规则', mode: 'plain' } };
+	const helper = makeHelpers();
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, helper.props);
+	findButton(mounted.tree).props.onClick();
+	await sleep(0);
+	const nodes = flatten(mounted.rerender().tree);
+	assert.ok(nodes.some((node) => node.props?.className === 'dsh-pe_status'), 'the floating status is present');
+	assert.equal(nodes.some((node) => node.props?.className === 'dsh-pe_notice'), false, 'the inline notice must not double up and stretch the row');
+});
+
+await test('every string the UI asks for exists in both dictionaries', async () => {
+	const used = new Set();
+	for (const match of source.matchAll(/\bt\(\s*'([^']+)'/gu)) used.add(match[1]);
+	const counts = new Map();
+	for (const match of source.matchAll(/^[\t ]*'([^']+)'\s*:\s*'/gmu)) counts.set(match[1], (counts.get(match[1]) ?? 0) + 1);
+	const missing = [...used].filter((key) => !counts.has(key)).sort();
+	assert.deepEqual(missing, [], `keys used but never defined: ${missing.join(', ')}`);
+	const single = [...used].filter((key) => (counts.get(key) ?? 0) < 2).sort();
+	assert.deepEqual(single, [], `keys defined in only one language: ${single.join(', ')}`);
+});
+
+await test('a built-in rule set is named too, so a fallback is visible', async () => {
+	nextResponse = { body: { ok: true, kind: 'enhanced', text: '改好的提示词', ruleSet: 'workbuddy', mode: 'plain' } };
+	const helper = makeHelpers();
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, helper.props);
+	findButton(mounted.tree).props.onClick();
+	await sleep(0);
+	const tree = mounted.rerender().tree;
+	const badge = flatten(tree).find((node) => node.props?.className === 'dsh-pe_status');
+	assert.ok(badge !== undefined, 'the built-in branch is reported as well');
+	assert.match(textOf(badge), /state\.status\.workbuddy/u, 'the line names workbuddy instead of claiming a custom rule ran');
 });
 
 await test('the mark returns after a failed run', async () => {
@@ -2065,9 +2141,12 @@ await test('composer seat stays decoupled from host geometry', () => {
 	assert.ok(/flex:0 0 auto/u.test(rule), 'seat must not shrink into neighbours');
 	assert.ok(/max-width:100%/u.test(rule), 'seat must bound its own width');
 	assert.equal(/margin-[a-z]+:-\d/u.test(rule), false, 'no negative margin');
-	assert.ok(/transform:translateX\(var\(--dsh-pe-seat-nudge/u.test(rule), 'tightening is a visual transform, not a layout margin');
+	// A skin can zero the row gap, so the seat may not close a gap it does not own:
+	// the old 7px visual drift ran over the model control in exactly that case (#9).
 	const nudge = Number(/--dsh-pe-seat-nudge,(\d+)px/u.exec(src)?.[1]);
-	assert.ok(nudge > 0 && nudge < 8, `nudge must stay below the host narrow gap, got ${nudge}px`);
+	assert.equal(nudge, 0, `the default seat shift must be 0, got ${nudge}px`);
+	assert.ok(/margin-inline-end:6px/u.test(rule), 'a positive inline-end margin is what keeps >=6px in a zero-gap row');
+	assert.ok(/transform:translateX\(var\(--dsh-pe-seat-nudge/u.test(rule), 'the shift stays an opt-in transform, never a layout margin');
 	assert.equal(/@container[^\n]*\.dsh-pe_root/u.test(src), false, 'no width-dependent seat pull');
 	const order = Number(/id: 'prompt-enhance', order: (-?\d+)/u.exec(src)?.[1]);
 	assert.ok(Number.isFinite(order) && order >= 0 && order <= 100, `calm slot order, got ${order}`);
