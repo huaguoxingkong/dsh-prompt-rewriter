@@ -3,6 +3,11 @@ name: publish
 # Manual dispatch only. A tag pushed by hand should not publish by accident: the
 # release is cut from the Actions UI after CI on main is green, and this workflow
 # verifies the tag/version pair before it touches the registry.
+# The branch the button is pressed on does not matter: the run checks out `tag`
+# and compares against it, so dispatch from main is fine as long as the tag
+# exists and its version matches package.json.
+# Pre-release versions (X.Y.Z-dev.N) publish to the `dev` dist-tag only: no
+# GitHub Release, `latest` untouched.
 on:
   workflow_dispatch:
     inputs:
@@ -31,14 +36,35 @@ jobs:
       # OIDC publishing needs a recent npm; the runner's bundled one is too old.
       - run: npm install -g npm@latest && npm --version
 
+      # Dispatch may come from any branch: the checkout above already pinned the
+      # tag, so compare against the input. GITHUB_REF_NAME is the branch the
+      # button was pressed on (e.g. "main"), never the tag.
       - name: Tag must match package.json
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          [ "${TAG}" = "v${version}" ] || {
+            echo "::error::tag ${TAG} does not match package.json v${version}"
+            exit 1
+          }
+
+      # A version with a pre-release suffix (1.9.1-dev.1) publishes to the dev
+      # dist-tag and never creates a Release, so `latest` and the Releases page
+      # stay a record of formal versions only.
+      - name: Decide the dist-tag
+        id: meta
         shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
-          [ "${GITHUB_REF_NAME}" = "v${version}" ] || {
-            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json v${version}"
-            exit 1
-          }
+          if [[ "${version}" == *-* ]]; then
+            echo "dist_tag=dev" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Refuse to overwrite a published version
         shell: bash
@@ -63,11 +89,14 @@ jobs:
 
       # prepublishOnly runs `npm run check && npm test && npm run gate`, so the
       # artefact gate stays in the path; the lifecycle script used to be skipped.
-      - run: npm publish --access public
+      - run: npm publish --access public --tag "${{ steps.meta.outputs.dist_tag }}"
 
       # The release body is derived from the shipped CHANGELOG, never hand-written
       # and never generated from commit messages. See AGENTS.md §6.1.
+      # Formal versions only: a pre-release publishes to the dev dist-tag and gets
+      # no Release.
       - name: Derive the release body from CHANGELOG.md
+        if: steps.meta.outputs.prerelease == 'false'
         shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
@@ -75,9 +104,14 @@ jobs:
             const fs = require("node:fs");
             const version = process.argv[1];
             const lines = fs.readFileSync("CHANGELOG.md", "utf8").split(/\r?\n/);
-            const start = lines.findIndex((l) => l.trim() === "## " + version);
+            const esc = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            // Keep a Changelog: "## [1.9.0] - 2026-11-22"; older sections: "## 1.9.0".
+            // The trailing part must be a date, so "## [1.9.0-dev.1]" can never be
+            // read as 1.9.0.
+            const heading = new RegExp("^##\\s+\\[?" + esc + "\\]?(?:\\s+[-–—]\\s+\\d{4}-\\d{2}-\\d{2})?$");
+            const start = lines.findIndex((l) => heading.test(l.trim()));
             if (start < 0) throw new Error("CHANGELOG.md has no section for " + version);
-            let end = lines.findIndex((l, i) => i > start && /^## \d/.test(l.trim()));
+            let end = lines.findIndex((l, i) => i > start && /^##(?!#)\s/.test(l.trim()));
             if (end < 0) end = lines.length;
             const body = lines.slice(start + 1, end).join("\n").trim();
             const out = body
@@ -89,6 +123,7 @@ jobs:
           cat release-body.md
 
       - name: Build the release zip
+        if: steps.meta.outputs.prerelease == 'false'
         shell: bash
         run: |
           name="$(node -p "require('./package.json').name")"
@@ -100,17 +135,20 @@ jobs:
           (cd ziproot && zip -qr "../dist/${name}-${version}.zip" .)
 
       - name: Create the GitHub Release
+        if: steps.meta.outputs.prerelease == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
         run: |
           name="$(node -p "require('./package.json').name")"
           version="$(node -p "require('./package.json').version")"
-          gh release create "${GITHUB_REF_NAME}" "dist/${name}-${version}.zip" \
+          gh release create "${TAG}" "dist/${name}-${version}.zip" \
             --verify-tag \
-            --title "${GITHUB_REF_NAME}" \
+            --title "${TAG}" \
             --notes-file release-body.md
 
       - name: Verify both channels agree
+        if: steps.meta.outputs.prerelease == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/check-sync.mjs --token "$GH_TOKEN"
