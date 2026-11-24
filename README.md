@@ -179,7 +179,7 @@ dsh plugin --profile web add github:huaguoxingkong/dsh-prompt-rewriter
 
 ## 配置
 
-profile 插件行的 `config` 全部可选。前九项由设置页托管，后七项是运维上限，不暴露在界面上：
+profile 插件行的 `config` 全部可选。前十一项由设置页托管，后七项是运维上限，不暴露在界面上：
 
 ```yaml
 - id: dsh-prompt-rewriter
@@ -195,6 +195,8 @@ profile 插件行的 `config` 全部可选。前九项由设置页托管，后�
     referenceFiles: true       # 是否参考输入框附件内容
     referenceContext: true     # 是否参考之前的对话
     shortcutEnabled: false     # 键盘快捷键（默认关闭）
+    ruleShortcut: "Ctrl+J" # 切换规则集的快捷键（空 = 未绑定）
+    ruleShortcutEnabled: true  # 规则集快捷键独立开关
 
     # 运维上限（不暴露在设置页）
     maxDraftChars: 8000        # 草稿字符上限

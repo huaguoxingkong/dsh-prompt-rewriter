@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // Resolved from this file, not from the shell: the suite must run from any cwd.
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
@@ -40,6 +41,8 @@ await test('Config declares only the user preferences', async () => {
 		'referenceFiles',
 		'referenceImages',
 		'ruleSet',
+		'ruleShortcut',
+		'ruleShortcutEnabled',
 		'shortcutEnabled',
 		'useCustomModel',
 	]);
@@ -959,6 +962,12 @@ await test('settings GET returns the defaults', async () => {
 		referenceContext: true,
 		shortcutEnabled: false,
 		ruleSet: 'legacy',
+		// Ships bound: the badge is still the primary way in, so a default key that opens
+		// the same menu is a shortcut rather than the only route.
+		ruleShortcut: 'Ctrl+J',
+		// Its own switch under `shortcutEnabled`: on by default, so the key stays usable
+		// for users who never touch the new toggle.
+		ruleShortcutEnabled: true,
 		// The custom-rule list is a live preference like the others: an empty array
 		// keeps older configs readable without touching the three shipped rule sets.
 		customRules: '[]',
@@ -988,6 +997,51 @@ await test('settings GET also reports the package version and project URL', asyn
 	assert.equal(body.about.url.endsWith('.git'), false, 'the .git suffix must be stripped');
 });
 
+await test('the reported version and release notes follow an in-place update', async () => {
+	// A hot install rewrites package.json and CHANGELOG.md under a running Host, so a
+	// cache that assumes "the file cannot change while the plugin is loaded" would keep
+	// serving the previous version label and release notes after a real update.
+	const dir = fs.mkdtempSync(path.join(fs.mkdirSync(path.join(REPO_ROOT, '.tmp'), { recursive: true }) ?? path.join(REPO_ROOT, '.tmp'), 'pe-about-'));
+	try {
+		const copyInto = (version, body) => {
+			fs.copyFileSync(path.join(REPO_ROOT, 'index.js'), path.join(dir, 'index.js'));
+			for (const name of ['legacy-rules.mjs', 'intent-first-rules.mjs', 'workbuddy-rules.mjs']) {
+				fs.copyFileSync(path.join(REPO_ROOT, name), path.join(dir, name));
+			}
+			fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({
+				name: 'dsh-prompt-rewriter',
+				version,
+				type: 'module',
+				repository: { url: 'git+https://github.com/huaguoxingkong/dsh-prompt-rewriter.git' },
+			}));
+			fs.writeFileSync(path.join(dir, 'CHANGELOG.md'), body);
+		};
+		const section = (version, line) => `# Changelog\n\n## [${version}] - 2026-11-24\n\n**中文**\n\n### 修复\n\n- ${line}\n`;
+		copyInto('1.0.0', section('1.0.0', '第一版'));
+		const hot = await import(pathToFileURL(path.join(dir, 'index.js')).href);
+		const { ctx, routes } = makeCtx({ llm: fakeLlm({ textParts: ['x'] }) });
+		ctx.settings = { update: async () => {} };
+		ctx.get = ((original) => (name) => (name === 'settings' ? ctx.settings : name === 'profileContext' ? { entryId: 'dsh-prompt-rewriter' } : original(name)))(ctx.get.bind(ctx));
+		hot.apply(ctx, {});
+		const route = routeByPath(routes, '/api/prompt-enhance/settings');
+		const first = await (await route.fetch(new Request('http://x/api/prompt-enhance/settings', { method: 'GET' }))).json();
+		assert.equal(first.about.version, '1.0.0');
+		assert.deepEqual(first.changelog.map((entry) => entry.version), ['1.0.0']);
+
+		// The same running plugin, after an in-place update of its own files.
+		copyInto('1.0.1', section('1.0.1', '第二版'));
+		const later = new Date(Date.now() + 2000);
+		fs.utimesSync(path.join(dir, 'package.json'), later, later);
+		fs.utimesSync(path.join(dir, 'CHANGELOG.md'), later, later);
+		const second = await (await route.fetch(new Request('http://x/api/prompt-enhance/settings', { method: 'GET' }))).json();
+		assert.equal(second.about.version, '1.0.1', 'the version label must follow the rewritten manifest');
+		assert.deepEqual(second.changelog.map((entry) => entry.version), ['1.0.1'], 'release notes must follow the rewritten changelog');
+		assert.match(String(second.changelog[0]?.items?.[0] ?? ''), /第二版/u, 'and the new bullet is the one shown');
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 await test('settings POST persists through the settings service', async () => {
 	const { ctx, routes } = makeCtx({ llm: fakeLlm({ textParts: ['x'] }) });
 	const writes = [];
@@ -1007,6 +1061,40 @@ await test('settings POST persists through the settings service', async () => {
 	assert.equal(writes.length, 1);
 	assert.equal(writes[0].ns, 'dsh-prompt-rewriter');
 	assert.deepEqual(writes[0].patch, { enhanceProvider: 'p1', enhanceModel: 'm9', referenceImages: true, referenceContext: false });
+});
+
+await test('settings POST stores a rule-set shortcut and refuses a malformed one', async () => {
+	const { ctx, routes } = makeCtx({ llm: fakeLlm({ textParts: ['x'] }) });
+	const writes = [];
+	ctx.settings = { update: async (ns, patch) => { writes.push({ ns, patch }); } };
+	ctx.get = ((original) => (name) => (name === 'settings' ? ctx.settings : name === 'profileContext' ? { entryId: 'dsh-prompt-rewriter' } : original(name)))(ctx.get.bind(ctx));
+	plugin.apply(ctx, {});
+	const route = routeByPath(routes, '/api/prompt-enhance/settings');
+	const post = (payload) => route.fetch(new Request('http://x/api/prompt-enhance/settings', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(payload),
+	}));
+
+	const stored = await (await post({ ruleShortcut: 'Ctrl+Alt+K' })).json();
+	assert.equal(stored.ok, true);
+	assert.deepEqual(writes, [{ ns: 'dsh-prompt-rewriter', patch: { ruleShortcut: 'Ctrl+Alt+K' } }]);
+
+	// An empty string is a real choice: the user unbound the key.
+	const cleared = await (await post({ ruleShortcut: '  ' })).json();
+	assert.equal(cleared.ok, true);
+	assert.deepEqual(writes[1].patch, { ruleShortcut: '' });
+
+	// The rule-set key has its own switch; turning it off must not clear the binding.
+	const switched = await (await post({ ruleShortcutEnabled: false })).json();
+	assert.equal(switched.ok, true);
+	assert.deepEqual(writes[2].patch, { ruleShortcutEnabled: false });
+
+	// Anything that could never match a key event is refused before it is stored.
+	const malformed = await (await post({ ruleShortcut: 'not a combo!' })).json();
+	assert.equal(malformed.ok, false);
+	assert.equal(malformed.code, 'BAD_REQUEST');
+	assert.equal(writes.length, 3, 'a malformed combo never reaches the settings service');
 });
 
 await test('settings POST rejects a non-boolean switch', async () => {
@@ -1588,11 +1676,12 @@ await test('settings exposes the shipped changelog as Chinese-only published ver
 		assert.match(entry.date, /^\d{4}-\d{2}-\d{2}$/u, 'every listed version is dated');
 		assert.equal('dev' in entry, false, 'no dev flag is exposed any more');
 	}
-	// Newest first. As of this build 1.9.0 IS released, so it is the newest listed
-	// version and its bullets belong in the panel; the empty `[Unreleased]` heading
-	// above it still must never surface as a release of its own.
-	assert.equal(body.changelog[0].version, '1.9.0', 'the newest entry is the newest published release');
-	assert.equal(body.changelog[0].date, '2026-11-22', 'the release carries the date it shipped with');
+	// Newest first. On a published build (no `-dev` suffix) the newest entry must be
+	// exactly the manifest version; on a dev build the newest entry stays at the last
+	// published release, so compare it numerically and never let it exceed the manifest.
+	const isDevBuild = shipped.version.includes('-');
+	assert.equal(body.changelog[0].version, isDevBuild ? '1.9.0' : shipped.version, 'the newest entry is the newest published release');
+	assert.match(body.changelog[0].date, /^\d{4}-\d{2}-\d{2}$/u, 'the release carries the date it shipped with');
 	const listed = body.changelog.map((entry) => entry.version);
 	assert.equal(listed.includes('1.9.0'), true, '1.9.0 is a published version now');
 	assert.equal(listed.includes('1.9.1'), false, 'a version nobody released is not invented');

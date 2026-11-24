@@ -179,7 +179,7 @@ Download the zip from [Releases](https://github.com/huaguoxingkong/dsh-prompt-re
 
 ## Configuration
 
-Every `config` key on the profile plugin line is optional. The first nine are managed by the settings page; the last seven are operational ceilings and are not exposed in the UI.
+Every `config` key on the profile plugin line is optional. The first eleven are managed by the settings page; the last seven are operational ceilings and are not exposed in the UI.
 
 ```yaml
 - id: dsh-prompt-rewriter
@@ -195,6 +195,8 @@ Every `config` key on the profile plugin line is optional. The first nine are ma
     referenceFiles: true       # read composer file contents
     referenceContext: true     # read earlier turns
     shortcutEnabled: false     # keyboard shortcut (off by default)
+    ruleShortcut: "Ctrl+J" # rule-set switch shortcut (empty = unbound)
+    ruleShortcutEnabled: true  # independent switch for the rule-set shortcut
 
     # operational ceilings (not exposed in the UI)
     maxDraftChars: 8000        # draft length cap

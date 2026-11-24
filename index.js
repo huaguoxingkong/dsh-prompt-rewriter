@@ -27,6 +27,8 @@ import { WORKBUDDY_RULES } from './workbuddy-rules.mjs';
 
 const RULE_SET_LEGACY = 'legacy';
 const RULE_SET_INTENT_FIRST = 'intent-first';
+/** The rule-set shortcut the plugin ships; the settings page restores this value. */
+const DEFAULT_RULE_SHORTCUT = 'Ctrl+J';
 const RULE_SET_WORKBUDDY = 'workbuddy';
 const RULE_SET_VALUES = new Set([RULE_SET_LEGACY, RULE_SET_INTENT_FIRST, RULE_SET_WORKBUDDY]);
 
@@ -77,6 +79,10 @@ export const Config = z.object({
 	referenceContext: z.boolean().volatile(),
 	/** Opt-in keyboard shortcut. Off by default so no global key fires unasked. */
 	shortcutEnabled: z.boolean().volatile(),
+	/** Combo that opens the rule-set menu. An empty string is a real choice: no key. */
+	ruleShortcut: z.string().volatile(),
+	/** Its own switch, under the shared `shortcutEnabled` master. On by default. */
+	ruleShortcutEnabled: z.boolean().volatile(),
 	/** Which shipped rule set the enhancement pipeline uses. */
 	ruleSet: z.string().volatile(),
 	/** User-supplied rule sets, stored as a JSON array string; `[]` when none exist. */
@@ -106,6 +112,11 @@ const DEFAULTS = Object.freeze({
 	referenceContext: true,
 	// Off by default: a plugin must not claim a global key unless the user opts in.
 	shortcutEnabled: false,
+	// Ships bound: the rule-set menu also has a visible badge, so a default key that
+	// opens the same menu is a shortcut, never the only way in.
+	ruleShortcut: DEFAULT_RULE_SHORTCUT,
+	// On by default under the master switch: flipping it off keeps the bound combo.
+	ruleShortcutEnabled: true,
 	// Keep the existing shipped behavior unless the user opts into intent-first rules.
 	ruleSet: RULE_SET_LEGACY,
 	// No user rules by default: an older config without this key reads as "none".
@@ -382,6 +393,7 @@ function resolveConfig(raw) {
 		referenceFiles: optionalBoolean(config.referenceFiles, DEFAULTS.referenceFiles),
 		referenceContext: optionalBoolean(config.referenceContext, DEFAULTS.referenceContext),
 		shortcutEnabled: optionalBoolean(config.shortcutEnabled, DEFAULTS.shortcutEnabled),
+		ruleShortcutEnabled: optionalBoolean(config.ruleShortcutEnabled, DEFAULTS.ruleShortcutEnabled),
 		ruleSet: isRuleSelection(config.ruleSet) ? config.ruleSet : DEFAULTS.ruleSet,
 		customRules: typeof config.customRules === 'string' ? config.customRules : DEFAULTS.customRules,
 	};
@@ -1466,7 +1478,7 @@ const SETTINGS_PATH = '/api/prompt-enhance/settings';
 const CONTEXT_STATUS_PATH = '/api/prompt-enhance/context-status';
 
 /** The row config keys the settings page may write. */
-const SETTING_KEYS = Object.freeze(['customRules', 'enhanceProvider', 'enhanceModel', 'useCustomModel', 'referenceImages', 'referenceFiles', 'referenceContext', 'shortcutEnabled', 'ruleSet']);
+const SETTING_KEYS = Object.freeze(['customRules', 'enhanceProvider', 'enhanceModel', 'useCustomModel', 'referenceImages', 'referenceFiles', 'referenceContext', 'shortcutEnabled', 'ruleShortcut', 'ruleShortcutEnabled', 'ruleSet']);
 
 /**
  * The namespace the settings service expects for this plugin.
@@ -1497,39 +1509,74 @@ function settingsNamespace(ctx) {
 }
 
 /**
+ * Cached file reads, invalidated by the file's mtime and size.
+ *
+ * The install directory is now rewritten in place by every update, so the old
+ * assumption behind the module-level caches below — "the file cannot change
+ * while the plugin is loaded" — stopped holding: a hot install produced new
+ * client code next to a version label and release notes read at startup. Keying
+ * on stat costs one call per settings request and makes a hot install show up on
+ * the next page load.
+ */
+const fileCache = new Map();
+
+/**
+ * Read and parse a file, reusing the previous result while its stat is unchanged.
+ * @param {string} file Absolute path.
+ * @param {(text: string) => any} parse Turns the file text into the cached value.
+ * @param {any} fallback Value when the file is missing or unreadable.
+ * @returns the parsed value, or the fallback.
+ */
+function readParsed(file, parse, fallback) {
+	let stat;
+	try {
+		stat = fs.statSync(file);
+	} catch {
+		// A missing file is not a cache entry: the next install may create it.
+		fileCache.delete(file);
+		return fallback;
+	}
+	const key = `${stat.mtimeMs}:${stat.size}`;
+	const hit = fileCache.get(file);
+	if (hit !== undefined && hit.key === key) return hit.value;
+	let value;
+	try {
+		value = parse(fs.readFileSync(file, 'utf8'));
+	} catch {
+		value = fallback;
+	}
+	fileCache.set(file, { key, value });
+	return value;
+}
+
+/**
  * Package facts the settings page shows: version and project URL.
  *
  * Read from this package's own `package.json` at runtime rather than hard-coded,
- * so bumping the manifest is the only step a release needs. Cached after the first
- * read: the file cannot change while the plugin is loaded.
+ * so bumping the manifest is the only step a release needs. Re-read whenever the
+ * manifest's stat changes, because a hot install rewrites it in place.
  *
  * @returns `{ version, url }`; fields are undefined when the manifest is absent.
  */
 function readAbout() {
-	if (aboutCache !== undefined) return aboutCache;
-	let version;
-	let url;
-	try {
-		const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot(), 'package.json'), 'utf8'));
-		version = typeof manifest.version === 'string' ? manifest.version : undefined;
+	return readParsed(path.join(packageRoot(), 'package.json'), (text) => {
+		const manifest = JSON.parse(text);
+		const version = typeof manifest.version === 'string' ? manifest.version : undefined;
 		// `repository` may be a string or `{ url }`; strip the git+ prefix and .git
 		// suffix so it is directly openable in a browser.
 		const raw = typeof manifest.repository === 'string' ? manifest.repository : manifest.repository?.url;
+		let url;
 		if (typeof raw === 'string') {
 			url = raw
 				.replace(/^git\+/u, '')
 				.replace(/\.git$/u, '')
 				.replace(/^git:\/\//u, 'https://');
 		}
-	} catch {
-		// A missing manifest simply hides the version line; it must not break the page.
-	}
-	aboutCache = { version, url };
-	return aboutCache;
+		return { version, url };
+	}, { version: undefined, url: undefined });
 }
 
-/** Memoized release notes. The file cannot change while the plugin is loaded. */
-let changelogCache;
+/** Memoized release notes, keyed by the changelog's stat; see {@link readParsed}. */
 
 /**
  * Strip inline Markdown emphasis from one changelog bullet.
@@ -1559,10 +1606,8 @@ export function plainTextItem(text) {
  * @returns Array of { version, date, items } objects, newest first.
  */
 function readChangelog() {
-	if (changelogCache !== undefined) return changelogCache;
-	const entries = [];
-	try {
-		const text = fs.readFileSync(path.join(packageRoot(), 'CHANGELOG.md'), 'utf8');
+	return readParsed(path.join(packageRoot(), 'CHANGELOG.md'), (text) => {
+		const entries = [];
 		let current = null;
 		let chinese = false;
 		for (const rawLine of text.split('\n')) {
@@ -1587,11 +1632,8 @@ function readChangelog() {
 			if (line === '**English**' || line === 'English' || line === '## English') { chinese = false; continue; }
 			if (chinese && /^-\s+/u.test(line)) current.items.push(plainTextItem(line.replace(/^-\s+/u, '')));
 		}
-	} catch {
-		// A missing changelog must not take the settings page down.
-	}
-	changelogCache = entries.filter((entry) => entry.items.length > 0);
-	return changelogCache;
+		return entries.filter((entry) => entry.items.length > 0);
+	}, []);
 }
 
 /**
@@ -1611,8 +1653,21 @@ function packageRoot() {
 	}
 }
 
-/** Memoized result of {@link readAbout}. */
-let aboutCache;
+/**
+ * A stored combo, verbatim.
+ *
+ * Unlike the other string preferences this one cannot be defaulted on empty: an
+ * empty string is the user's decision to unbind the key, and replacing it with the
+ * shipped default would resurrect a shortcut they deliberately cleared.
+ *
+ * @param value - whatever the config holds.
+ * @param fallback - the value to use when nothing was stored at all.
+ * @returns the combo to report, possibly empty.
+ */
+function readShortcutCombo(value, fallback) {
+	if (typeof value !== 'string') return fallback;
+	return value.trim();
+}
 
 /**
  * Read the live preference values.
@@ -1640,6 +1695,8 @@ function readPreferences(ctx, config) {
 		referenceFiles: source.referenceFiles !== false,
 		referenceContext: source.referenceContext !== false,
 		shortcutEnabled: source.shortcutEnabled === true,
+		ruleShortcut: readShortcutCombo(source.ruleShortcut, DEFAULTS.ruleShortcut),
+		ruleShortcutEnabled: source.ruleShortcutEnabled !== false,
 		ruleSet: isRuleSelection(source.ruleSet) ? source.ruleSet : RULE_SET_LEGACY,
 		customRules: typeof source.customRules === 'string' ? source.customRules : DEFAULTS.customRules,
 	};
@@ -1716,7 +1773,7 @@ async function handleSettings(ctx, config, request) {
 		return fail('BAD_REQUEST', '设置请求不是有效的 JSON。');
 	}
 	const patch = {};
-	const BOOLEAN_KEYS = new Set(['useCustomModel', 'referenceImages', 'referenceFiles', 'referenceContext', 'shortcutEnabled']);
+	const BOOLEAN_KEYS = new Set(['useCustomModel', 'referenceImages', 'referenceFiles', 'referenceContext', 'shortcutEnabled', 'ruleShortcutEnabled']);
 	for (const key of SETTING_KEYS) {
 		if (payload?.[key] === undefined) continue;
 		if (key === 'customRules') {
@@ -1747,6 +1804,20 @@ async function handleSettings(ctx, config, request) {
 				continue;
 			}
 			return fail('BAD_REQUEST', '规则集必须是 legacy、intent-first、workbuddy，或一条已存在且启用的自定义规则。');
+		}
+		if (key === 'ruleShortcut') {
+			const value = payload[key];
+			if (typeof value !== 'string') return fail('BAD_REQUEST', '快捷键必须是字符串。');
+			const combo = value.trim();
+			// Empty is a real choice: "no shortcut". Anything else has to look like
+			// modifiers plus one key, or the client listener could never match it and the
+			// row would silently stop working.
+			if (combo.length > 64) return fail('BAD_REQUEST', '快捷键太长。');
+			if (combo !== '' && !/^(?:[A-Za-z]+\+)*[A-Za-z0-9]+$/u.test(combo)) {
+				return fail('BAD_REQUEST', '快捷键格式不正确，应形如 Ctrl+J。');
+			}
+			patch[key] = combo;
+			continue;
 		}
 		if (BOOLEAN_KEYS.has(key)) {
 			if (typeof payload[key] !== 'boolean') return fail('BAD_REQUEST', `设置项 ${key} 必须是布尔值。`);

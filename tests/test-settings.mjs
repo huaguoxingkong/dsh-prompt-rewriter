@@ -310,25 +310,26 @@ await test('the page renders every option once settings load', async () => {
 	tree = render(settings.component, { t });
 
 	const rows = flatten(tree).filter((n) => n.props?.['data-row'] !== undefined);
-	assert.deepEqual(rows.map((r) => r.props['data-row']), ['model', 'ruleSet', 'context', 'images', 'files', 'shortcut']);
+	assert.deepEqual(rows.map((r) => r.props['data-row']), ['model', 'ruleSet', 'context', 'images', 'files', 'shortcut', 'ruleShortcut']);
 
 	const titles = flatten(tree).filter((n) => n.props?.className === 'dsh-pe-settingsTitle');
-	assert.equal(titles.length, 6, 'each row needs a title');
+	assert.equal(titles.length, 7, 'each row needs a title');
 
 	const hints = flatten(tree).filter((n) => n.props?.className === 'dsh-pe-settingsHint');
-	assert.equal(hints.length, 6, 'each row needs an explanatory sentence');
+	assert.equal(hints.length, 7, 'each row needs an explanatory sentence');
 	for (const hint of hints) {
 		assert.ok(typeof hint.children?.[0] === 'string' && hint.children[0].length > 0, 'hint text must not be empty');
 	}
 
-	// Five toggles plus the rule-set select: the select is a row, not a switch.
+	// Six toggles plus the rule-set select: the select is a row, not a switch.
 	const switches = flatten(tree).filter((n) => n.props?.role === 'switch');
-	assert.equal(switches.length, 5, 'five toggles: model, context, images, files, shortcut');
+	assert.equal(switches.length, 6, 'six toggles: model, context, images, files, shortcut, rule shortcut');
 	assert.equal(switches[0].props['aria-checked'], 'false', 'custom model is off by default');
 	assert.equal(switches[1].props['aria-checked'], 'true', 'context is on by default');
 	assert.equal(switches[2].props['aria-checked'], 'false', 'images is off by default');
 	assert.equal(switches[3].props['aria-checked'], 'true', 'file content is on by default');
 	assert.equal(switches[4].props['aria-checked'], 'false', 'the keyboard shortcut is off by default');
+	assert.equal(switches[5].props['aria-checked'], 'true', 'the rule-set key has its own switch, on by default');
 });
 
 await test('the picker lists only owned models, grouped by provider', async () => {
@@ -686,7 +687,7 @@ await test('every settings row carries a plain-language title', async () => {
 	// Assert on structure and locale KEYS, not on literal copy: hard-coding the wording
 	// here made the test a second place every copy change had to be mirrored.
 	const source = fs.readFileSync(path.join(here, '..', 'client.js'), 'utf8');
-	for (const key of ['settings.model.title', 'settings.rules.title', 'settings.context.title', 'settings.images.title', 'settings.files.title', 'settings.shortcut.title',
+	for (const key of ['settings.model.title', 'settings.rules.title', 'settings.context.title', 'settings.images.title', 'settings.files.title', 'settings.shortcut.title', 'settings.ruleShortcut.title',
 		// Copy that names the playbooks: short by construction, because it sits in
 		// a 220px select or a one-line disclosure.
 		'settings.rules.legacy', 'settings.rules.intentFirst', 'settings.rules.workbuddy', 'settings.rules.compare',
@@ -709,7 +710,7 @@ await test('every settings row carries a plain-language title', async () => {
 	await sleep(0);
 	tree = render(settings.component, { t });
 	const titles = flatten(tree).filter((n) => n.props?.className === 'dsh-pe-settingsTitle');
-	assert.equal(titles.length, 6);
+	assert.equal(titles.length, 7);
 });
 
 // --- version line and project link -----------------------------------------
@@ -1099,6 +1100,264 @@ await test('shortcut edits only ever target this plugin own command', async () =
 	}
 });
 
+// --- the rule-set shortcut row ---------------------------------------------
+// The key that opens the rule menu is a plugin preference, not a host command: it
+// is persisted through this plugin's own settings route. The row therefore has to
+// prove the same things — show the live value, refuse a clash WITHOUT writing, and
+// let the user restore or clear it.
+
+/** Mount the page and return accessors scoped to the rule-set shortcut row. */
+async function mountRuleShortcutRow(ruleShortcut, { ruleShortcutEnabled = true, shortcutEnabled = true, getShortcuts } = {}) {
+	stored = { enhanceProvider: '', enhanceModel: '', useCustomModel: false, referenceImages: false, referenceContext: true, shortcutEnabled, ruleSet: 'legacy', customRules: '[]', ruleShortcut, ruleShortcutEnabled };
+	const settings = settingsOf(install(getShortcuts === undefined ? {} : { getShortcuts }));
+	let tree = mount(settings.component, { t });
+	await sleep(0);
+	tree = render(settings.component, { t });
+	const mounted = {
+		get tree() { return tree; },
+		rerender() { tree = render(settings.component, { t }); return { tree }; },
+	};
+	const row = () => flatten(mounted.tree).find((n) => n.props?.['data-row'] === 'ruleShortcut');
+	const toggle = () => flatten(row()).find((n) => n.props?.className === 'dsh-pe-switch');
+	const binding = () => flatten(row()).find((n) => n.props?.className === 'dsh-pe-binding');
+	const hint = () => flatten(row()).find((n) => n.props?.className === 'dsh-pe-settingsHint');
+	const usage = () => flatten(row()).find((n) => n.props?.className === 'dsh-pe-settingsNote');
+	const error = () => flatten(mounted.tree).find((n) => n.props?.className === 'dsh-pe-settingsError');
+	const buttons = () => flatten(row()).filter((n) => n.props?.className === 'dsh-pe-reset');
+	const writes = () => requests
+		.filter((entry) => entry.init?.method === 'POST' && String(entry.url).endsWith('/settings'))
+		.map((entry) => JSON.parse(entry.init.body));
+	return { mounted, row, toggle, binding, hint, usage, error, buttons, writes };
+}
+
+const pressCombo = (button, init) => button.props.onKeyDown({
+	preventDefault() {},
+	stopPropagation() {},
+	ctrlKey: false,
+	shiftKey: false,
+	altKey: false,
+	metaKey: false,
+	...init,
+});
+
+await test('the enhance recorder refuses the rule-set key', async () => {
+	// The host's own conflict table only knows host commands. Binding the enhance key to
+	// the rule-set key would make one press fire both, so the page catches it first.
+	shortcutWrites.length = 0;
+	shortcutDescribe = () => ({ conflicts: [], issue: null, keys: [] });
+	const { mounted, binding } = await mountShortcutRow();
+	binding().props.onClick();
+	mounted.rerender();
+	binding().props.onKeyDown({ key: 'j', code: 'KeyJ', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false, preventDefault: () => {}, stopPropagation: () => {} });
+	await sleep(0);
+	assert.equal(shortcutWrites.length, 0, 'the host must never see a binding the plugin already owns');
+	mounted.rerender();
+	const shortcutRow = flatten(mounted.tree).find((n) => n.props?.['data-row'] === 'shortcut');
+	const hint = flatten(shortcutRow).find((n) => n.props?.className === 'dsh-pe-settingsHint');
+	assert.ok(String(hint?.children?.[0] ?? '').startsWith('settings.shortcut.rejected'), 'the row reports the clash; hint was: ' + String(hint?.children?.[0]));
+});
+
+await test('a combination the host already reacts to is refused at record time', async () => {
+	// The real-machine report: Ctrl+K opens session search, so Ctrl+Alt+K is a superset the
+	// host still reacts to first. The host compares modifiers for equality and calls it
+	// free; refusing it here is the only way the user learns before the press goes missing.
+	// The catalog carries NORMALIZED bindings (`control`), never the recorder's `primary`;
+	// both the desktop prefix shape and the web exact shape have to be caught.
+	for (const modifiers of [['control'], ['control', 'alt']]) {
+		requests = [];
+		shortcutCatalog = [{ id: 'session.search', keys: ['Ctrl', '+', 'K'], label: () => '搜索会话', binding: { code: 'KeyK', modifiers } }];
+		const { mounted, binding, error, writes } = await mountRuleShortcutRow('Alt+Shift+R');
+		binding().props.onClick();
+		mounted.rerender();
+		pressCombo(binding(), { key: 'k', code: 'KeyK', ctrlKey: true, altKey: true });
+		await sleep(0);
+		mounted.rerender();
+		assert.equal(writes().length, 0, 'a host-owned combination never reaches the config');
+		const shown = error();
+		assert.ok(shown !== undefined, 'the refusal is visible under the row');
+		assert.match(String(shown.children?.[0] ?? ''), /settings\.ruleShortcut\.hostOwned/u, 'and it names the host command');
+	}
+	shortcutCatalog = [];
+});
+
+await test('a saved key the host owns is called out instead of implied usable', async () => {
+	// An older build let Ctrl+Alt+K through, so the value can already be in the config.
+	// The row must say why that key does nothing rather than present it as active.
+	shortcutCatalog = [{ id: 'session.search', keys: ['Ctrl', '+', 'K'], label: () => '搜索会话', binding: { code: 'KeyK', modifiers: ['control'] } }];
+	const { hint } = await mountRuleShortcutRow('Ctrl+Alt+K');
+	assert.match(String(hint().children?.[0] ?? ''), /settings\.ruleShortcut\.hostOwned/u, 'the row names the host owner');
+	shortcutCatalog = [];
+});
+
+await test('the host check uses the injected shortcut face, not the gated ctx.get', async () => {
+	// Real bug: `ctx.get('shortcuts')` outside the inject list returns an Error object,
+	// so every host-conflict check silently passed even though the key was taken. The
+	// section must read the face published by `ctx.inject`, not the gated lookup.
+	shortcutCatalog = [{ id: 'session.search', keys: ['Ctrl', '+', 'K'], label: () => '搜索会话', binding: { code: 'KeyK', modifiers: ['control'] } }];
+	const { hint } = await mountRuleShortcutRow('Ctrl+Alt+K', { getShortcuts: () => new Error('outside the inject gate') });
+	assert.match(String(hint().children?.[0] ?? ''), /settings\.ruleShortcut\.hostOwned/u, 'the injected face must still answer');
+	shortcutCatalog = [];
+});
+
+await test('the rule-set key has its own switch that keeps the binding', async () => {
+	// The master switch gates both keys; this one gates only the rule-set key, and
+	// turning it off must not throw the recorded combination away.
+	requests = [];
+	shortcutCatalog = [];
+	const first = await mountRuleShortcutRow('Ctrl+Alt+J');
+	assert.equal(first.toggle().props['aria-checked'], 'true', 'the switch is on by default');
+	first.toggle().props.onClick();
+	await sleep(0);
+	first.mounted.rerender();
+	assert.deepEqual(first.writes(), [{ ruleShortcutEnabled: false }], 'turning it off writes only the switch');
+	assert.equal(first.binding().props.disabled, true, 'the binding control is disabled while the switch is off');
+	assert.equal(first.buttons().some((button) => button.props.disabled === false), false, 'reset and unbind are disabled too');
+
+	const off = await mountRuleShortcutRow('Ctrl+Alt+J', { ruleShortcutEnabled: false });
+	assert.equal(off.toggle().props['aria-checked'], 'false', 'the stored off state is shown');
+	assert.equal(String(off.hint().children?.[0]), 'settings.ruleShortcut.ownOffHint', 'and the row says the binding returns when switched on');
+	assert.equal(off.binding().children?.[0], 'Ctrl+Alt+J', 'the bound combination is still there');
+});
+
+await test('recording is captured even when the button no longer has focus', async () => {
+	// The real-machine report: recording “occasionally does nothing”. The handler used
+	// to live only on the binding button, so a re-render could leave the next press
+	// nowhere. The recorder now listens on the window in the capture phase.
+	const previousWindow = globalThis.window;
+	const handlers = [];
+	globalThis.window = {
+		addEventListener(type, handler) { if (type === 'keydown') handlers.push(handler); },
+		removeEventListener(type, handler) { const index = handlers.indexOf(handler); if (index >= 0) handlers.splice(index, 1); },
+	};
+	try {
+		requests = [];
+		shortcutCatalog = [];
+		const { mounted, binding, writes } = await mountRuleShortcutRow('Ctrl+Alt+J');
+		binding().props.onClick();
+		mounted.rerender();
+		assert.ok(handlers.length >= 1, 'the recorder subscribes on the window while armed');
+		const event = { key: 'k', code: 'KeyK', ctrlKey: true, altKey: true, shiftKey: false, metaKey: false, defaultPrevented: false, preventDefault() {}, stopPropagation() {} };
+		for (const handler of handlers) handler(event);
+		await sleep(0);
+		assert.deepEqual(writes(), [{ ruleShortcut: 'Ctrl+Alt+K' }], 'a press outside the button still records');
+	} finally {
+		globalThis.window = previousWindow;
+	}
+});
+
+await test('a lone modifier says it was seen instead of looking dead', async () => {
+	requests = [];
+	shortcutCatalog = [];
+	const { mounted, binding, hint, writes } = await mountRuleShortcutRow('Ctrl+Alt+J');
+	binding().props.onClick();
+	mounted.rerender();
+	pressCombo(binding(), { key: 'Control', code: 'ControlLeft', ctrlKey: true });
+	await sleep(0);
+	mounted.rerender();
+	assert.equal(writes().length, 0, 'a modifier alone is not a binding');
+	assert.match(String(hint().children?.[0] ?? ''), /settings\.ruleShortcut\.needModifier/u, 'the row shows the recorder saw it');
+});
+
+await test('the rule-set row shows the combination that is actually in force', async () => {
+	const { binding, hint } = await mountRuleShortcutRow('Alt+Shift+R');
+	assert.equal(binding().children?.[0], 'Alt+Shift+R', 'the stored combination is on screen');
+	assert.ok(String(hint().children?.[0]).includes('settings.ruleShortcut.hint'), 'hint was: ' + String(hint().children?.[0]));
+});
+
+await test('an unbound rule-set key says so instead of going quiet', async () => {
+	const { binding, hint } = await mountRuleShortcutRow('');
+	assert.equal(binding().children?.[0], 'settings.shortcut.unbound', 'the control reads "not set"');
+	assert.match(String(hint().children?.[0]), /^settings\.ruleShortcut\.unboundHint/u, 'and the row explains the fallback');
+});
+
+await test('the rule-set row teaches the keyboard flow with the live combination', async () => {
+	const { usage } = await mountRuleShortcutRow('Ctrl+J');
+	const text = String(usage()?.children?.[0] ?? '');
+	assert.match(text, /^settings\.ruleShortcut\.usage/u, 'note was: ' + text);
+	assert.equal(usage()?.props?.['data-combo'], 'Ctrl+J', 'the note names the combination actually in force');
+});
+
+await test('the usage note follows a changed combination', async () => {
+	const { usage } = await mountRuleShortcutRow('Ctrl+Alt+J');
+	assert.match(String(usage()?.children?.[0] ?? ''), /^settings\.ruleShortcut\.usage/u, 'the keyed copy is used');
+	assert.equal(usage()?.props?.['data-combo'], 'Ctrl+Alt+J', 'the note follows the stored combination');
+});
+
+await test('the usage note drops a dead key when the rule-set switch is off', async () => {
+	const { usage } = await mountRuleShortcutRow('Ctrl+J', { ruleShortcutEnabled: false });
+	const text = String(usage()?.children?.[0] ?? '');
+	assert.equal(text, 'settings.ruleShortcut.usageNoKey', 'the note falls back to the badge/right-click route');
+	assert.equal(usage()?.props?.['data-combo'], '', 'a switched-off key is not stored on the note');
+	assert.doesNotMatch(text, /Ctrl\+J/u, 'a switched-off key is never advertised');
+});
+
+await test('the usage note drops a dead key when the master switch is off', async () => {
+	const { usage } = await mountRuleShortcutRow('Ctrl+J', { shortcutEnabled: false });
+	const text = String(usage()?.children?.[0] ?? '');
+	assert.equal(text, 'settings.ruleShortcut.usageNoKey', 'the note falls back to the badge/right-click route');
+	assert.equal(usage()?.props?.['data-combo'], '', 'a globally disabled key is not stored on the note');
+	assert.doesNotMatch(text, /Ctrl\+J/u, 'a globally disabled key is never advertised');
+});
+
+await test('the usage note shrinks and wraps inside a narrow settings row', async () => {
+	const source = fs.readFileSync(path.join(here, '..', 'client.js'), 'utf8');
+	assert.match(source, /\.dsh-pe-settingsNote\{[^}]*flex:1 1 100%[^}]*min-width:0[^}]*overflow-wrap:break-word/u, 'the note takes the row width and wraps its text');
+	assert.match(source, /\.dsh-pe-settingsRow\{[^}]*flex-wrap:wrap/u, 'the row can stack its control and note instead of overflowing');
+});
+
+await test('the usage hint has matching Chinese and English copy', async () => {
+	const source = fs.readFileSync(path.join(here, '..', 'client.js'), 'utf8');
+	for (const key of ['settings.ruleShortcut.usage', 'settings.ruleShortcut.usageNoKey']) {
+		const matches = [...source.matchAll(new RegExp(`'${key.replace(/\./gu, '\\.')}':\\s*'([^']+)'`, 'gu'))];
+		assert.equal(matches.length, 2, `${key} must exist in both locale tables`);
+		for (const match of matches) {
+			assert.match(match[1], /↑\/↓/u, `${key} names the arrow keys`);
+			assert.match(match[1], /Enter/u, `${key} names Enter`);
+		}
+	}
+	const withCombo = [...source.matchAll(/'settings\.ruleShortcut\.usage':\s*'([^']+)'/gu)].map((match) => match[1]);
+	for (const copy of withCombo) assert.match(copy, /\{combo\}/u, 'the keyed copy takes the live combination');
+});
+
+await test('recording a reserved combination is refused before any write', async () => {
+	requests = [];
+	const { mounted, binding, error, writes } = await mountRuleShortcutRow('Alt+Shift+R');
+	binding().props.onClick();
+	mounted.rerender();
+	pressCombo(binding(), { key: 't', code: 'KeyT', ctrlKey: true });
+	await sleep(0);
+	mounted.rerender();
+	assert.equal(writes().length, 0, 'a refused combination must not reach the config');
+	const shown = error();
+	assert.ok(shown !== undefined, 'the refusal is visible under the row');
+	assert.ok(String(shown.children?.[0]).includes('settings.ruleShortcut.reserved'), 'error was: ' + String(shown.children?.[0]));
+	assert.equal(binding().children?.[0], 'Alt+Shift+R', 'the previous key stays in force');
+});
+
+await test('recording a free combination writes it once', async () => {
+	requests = [];
+	const { mounted, binding, writes } = await mountRuleShortcutRow('Alt+Shift+R');
+	binding().props.onClick();
+	mounted.rerender();
+	pressCombo(binding(), { key: 'k', code: 'KeyK', ctrlKey: true, altKey: true });
+	await sleep(0);
+	assert.deepEqual(writes(), [{ ruleShortcut: 'Ctrl+Alt+K' }], 'exactly one write, exactly one key');
+});
+
+await test('restore and unbind each write exactly one value', async () => {
+	requests = [];
+	const restored = await mountRuleShortcutRow('Ctrl+Alt+K');
+	restored.buttons()[0].props.onClick();
+	await sleep(0);
+	assert.deepEqual(restored.writes(), [{ ruleShortcut: 'Ctrl+J' }], 'restore writes the shipped default');
+
+	requests = [];
+	const cleared = await mountRuleShortcutRow('Alt+Shift+R');
+	cleared.buttons()[1].props.onClick();
+	await sleep(0);
+	assert.deepEqual(cleared.writes(), [{ ruleShortcut: '' }], 'an empty string is the stored "no key"');
+});
+
 await test('the shortcut row fills in when the service registers late', async () => {
 	// The settings section can mount before the host has registered `shortcuts`.
 	// Capturing the face at render time left the row blank forever; the hook must
@@ -1283,6 +1542,8 @@ await test('a stored custom rule appears as custom:<id> in the select, and only 
 	const select = nodes.filter((n) => n.props?.className === 'dsh-pe-select').at(-1);
 	const optionValues = flatten(select).filter((n) => n.type === 'option').map((option) => option.props?.value);
 	assert.deepEqual(optionValues, ['legacy', 'intent-first', 'workbuddy', 'custom:c1'], 'the stored rule is offered by id');
+	const optionNodes = flatten(select).filter((n) => n.type === 'option');
+	assert.equal(optionNodes.at(-1).children?.[0], '我的规则', 'the option is the stored name, with no auto 自定义 prefix');
 	assert.equal(select.props.value, 'custom:c1', 'the select shows the stored selection');
 
 	// Nothing of the editor is on the page until the row entry is pressed.
@@ -1447,9 +1708,10 @@ await test('the custom-rule entry is visible in the rule row and outside the col
 	assert.ok(detailsNode !== undefined, 'the comparison block is still present');
 	assert.equal(flatten(detailsNode).some((n) => n.props?.className === 'dsh-pe-addRule'), false, 'the entry is not inside the collapsed block');
 
-	// No new card and no new row: the page still has exactly the same six rows.
+	// No new card and no new row beyond the rule-set key: the page still reads as the
+	// same list, with the second keyboard row sitting under the first.
 	const rows = nodes.filter((n) => n.props?.['data-row'] !== undefined);
-	assert.deepEqual(rows.map((r) => r.props['data-row']), ['model', 'ruleSet', 'context', 'images', 'files', 'shortcut']);
+	assert.deepEqual(rows.map((r) => r.props['data-row']), ['model', 'ruleSet', 'context', 'images', 'files', 'shortcut', 'ruleShortcut']);
 	assert.equal(flatten(rowNode).filter((n) => n.props?.className === 'dsh-pe-addRuleBadge').length, 0, 'no badge while there are zero rules');
 });
 
@@ -1505,6 +1767,28 @@ await test('the add-rule entry opens a modal with the copy, paste, name and save
 	const meta = flatten(modalBody).find((n) => n.props?.className === 'dsh-pe-customMeta');
 	assert.equal(meta.props.readOnly, true, 'the meta prompt stays a readonly, selectable field');
 	assert.ok(source.match(/\.dsh-pe-modalBody\{[^}]*overflow:auto/u) !== null, 'the body CSS really scrolls');
+});
+
+await test('a rule without a name is refused instead of being called 自定义', async () => {
+	// The real-machine report: a new rule showed up in the set as “自定义” although the
+	// user never typed it. The only safe answer is to require the name they want.
+	stored = { ruleSet: 'legacy', customRules: '[]' };
+	requests = [];
+	const settings = settingsOf(install());
+	mount(settings.component, { t });
+	await sleep(0);
+	let tree = await openCustomModal(settings.component);
+	const bodyArea = flatten(tree).find((n) => n.props?.className === 'dsh-pe-customBody');
+	bodyArea.props.onInput({ target: { value: 'RULE: x' } });
+	await sleep(0);
+	tree = render(settings.component, { t });
+	flatten(tree).find((n) => n.props?.className === 'dsh-pe-customSave').props.onClick();
+	await sleep(0);
+	tree = render(settings.component, { t });
+	const posted = requests.filter((entry) => entry.init?.method === 'POST');
+	assert.equal(posted.length, 0, 'no unnamed rule is written');
+	const shown = flatten(tree).find((n) => n.props?.className === 'dsh-pe-customError');
+	assert.match(String(shown?.children?.[0] ?? ''), /settings\.rules\.custom\.nameRequired/u, 'the row asks for a name');
 });
 
 await test('saving from the modal closes it and selects the new custom rule', async () => {
@@ -1696,7 +1980,7 @@ await test('every button carries a hover and a keyboard focus state, with no lay
 	const css = document.head.children.at(-1).textContent;
 	const classes = [
 		'dsh-pe-customAct', 'dsh-pe-customCopy', 'dsh-pe-customSave', 'dsh-pe-customCancel',
-		'dsh-pe-modalClose', 'dsh-pe-addRule', 'dsh-pe-binding', 'dsh-pe-switch', 'dsh-pe-reset', 'dsh-pe-changelogRow',
+		'dsh-pe-modalClose', 'dsh-pe-addRule', 'dsh-pe-binding', 'dsh-pe_badge', 'dsh-pe_ruleItem', 'dsh-pe-switch', 'dsh-pe-reset', 'dsh-pe-changelogRow',
 	];
 	for (const name of classes) {
 		assert.ok(css.includes(`.${name}:hover`), `${name} has a hover rule`);

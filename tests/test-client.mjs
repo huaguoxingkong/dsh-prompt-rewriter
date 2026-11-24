@@ -174,12 +174,26 @@ globalThis.__peDocListeners = {};
 
 // ---------------------------------------------------------------- module load
 let plugin;
+// Every createPortal call the client half makes, so a test can prove the rule menu
+// really leaves the slot's subtree instead of trusting that it does.
+const portalCalls = [];
 globalThis.window = {
 	__ModuleLoader__: {
 		load({ id, factory }) {
 			const require = (name) => {
 				if (name === 'react') return React;
 				if (name === '@deepseek-ai/dsh-client-ui-primitives') return {};
+				// The host hands plugin bundles react-dom. Returning the node unchanged
+				// keeps the tree inspectable; the call log is the evidence that the menu
+				// was portalled rather than rendered in place.
+				if (name === 'react-dom') {
+					return {
+						createPortal(node, container) {
+							portalCalls.push({ node, container });
+							return node;
+						},
+					};
+				}
 				throw new Error('unexpected require: ' + name);
 			};
 			plugin = factory(require);
@@ -274,7 +288,26 @@ function findButton(node) {
 			stack.push(...current);
 			continue;
 		}
-		if (current.type === 'button') return current;
+		// The seat now holds a second control (the rule-set badge), so match the
+		// enhance seat by its class instead of "whatever button comes first".
+		if (current.type === 'button' && current.props?.className === 'dsh-pe_button') return current;
+		stack.push(...(current.children ?? []));
+	}
+	return null;
+}
+
+/** The rule-set badge: the primary way into the rule menu. */
+function findBadge(node) {
+	const root = expand(node);
+	const stack = [root];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (current === null || current === undefined || typeof current !== 'object') continue;
+		if (Array.isArray(current)) {
+			stack.push(...current);
+			continue;
+		}
+		if (current.type === 'button' && current.props?.className === 'dsh-pe_badge') return current;
 		stack.push(...(current.children ?? []));
 	}
 	return null;
@@ -2153,6 +2186,398 @@ await test('composer seat stays decoupled from host geometry', () => {
 	// Only CSS selector text matters; comments may mention host class names.
 	const cssRules = cssText.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
 	assert.equal(/standardControls|InputBar_module/u.test(cssRules), false, 'no host-internal selectors in CSS rules');
+});
+
+await test('the badge shows a per-rule mark, not a generic 自', async () => {
+	// The real-machine report: every custom rule showed 自, so the badge said nothing
+	// about which set was active. CJK names take one character, Latin/digit names two.
+	const badgeFor = async (ruleSet, rules) => {
+		settingsPayload = { ok: true, values: { referenceContext: true, ruleSet, customRules: JSON.stringify(rules), shortcutEnabled: true } };
+		const mounted = mountComponent(composerRegistration(installPlugin()).component, makeHelpers({ draft: '做个图' }).props);
+		await sleep(0);
+		return textOf(findBadge(mounted.rerender().tree));
+	};
+	assert.equal(await badgeFor('custom:c1', [{ id: 'c1', name: '英文', body: 'x', enabled: true }]), '英', 'CJK name takes its first character');
+	assert.equal(await badgeFor('custom:c2', [{ id: 'c2', name: '三条要点', body: 'x', enabled: true }]), '三', 'CJK name takes its first character');
+	assert.equal(await badgeFor('custom:c3', [{ id: 'c3', name: '50字内', body: 'x', enabled: true }]), '50', 'numeric name takes two characters');
+	assert.equal(await badgeFor('custom:c4', [{ id: 'c4', name: 'English', body: 'x', enabled: true }]), 'EN', 'Latin name takes two letters');
+	assert.equal(await badgeFor('custom:c5', [{ id: 'c5', name: 'Three points', body: 'x', enabled: true }]), 'TP', 'multi-word Latin name takes both initials');
+	assert.equal(await badgeFor('custom:c6', []), 'rules.abbr.unavailable', 'a selection whose rule is gone reads 关');
+});
+
+await test('the rule badge names the active set and opens a menu of what can be picked', async () => {
+	settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'custom:c1', customRules: JSON.stringify([{ id: 'c1', name: '我的规则', body: 'x', enabled: true }, { id: 'c2', name: '停用的规则', body: 'y', enabled: false }]), shortcutEnabled: true } };
+	const helper = makeHelpers();
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, helper.props);
+	await sleep(0);
+	let tree = mounted.rerender().tree;
+	const badge = findBadge(tree);
+	assert.ok(badge !== undefined, 'the seat carries a rule-set badge');
+	assert.equal(textOf(badge), '我', 'the badge shows the first character of the active custom rule name');
+	badge.props.onClick({ preventDefault() {}, stopPropagation() {} });
+	tree = mounted.rerender().tree;
+	const menu = flatten(tree).find((node) => node.props?.className === 'dsh-pe_ruleMenu');
+	assert.ok(menu !== undefined, 'clicking the badge opens the menu');
+	assert.equal(menu.props.role, 'menu', 'the menu carries its role');
+	const items = flatten(tree).filter((node) => node.props?.className === 'dsh-pe_ruleItem');
+	assert.equal(items.length, 4, 'three built-ins plus the one enabled custom rule');
+	assert.equal(items.filter((item) => item.props['aria-checked'] === true).length, 1, 'exactly one item is ticked');
+	assert.ok(items.some((item) => /我的规则/u.test(textOf(item))), 'the custom rule is listed by name');
+	settingsPayload = { ok: true, values: { referenceContext: true, referenceImages: false, useCustomModel: false, enhanceProvider: '', enhanceModel: '' } };
+});
+
+await test('a right-click on the seat opens the menu and never reaches the host menu', async () => {
+	settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'legacy', customRules: '[]', shortcutEnabled: true } };
+	const helper = makeHelpers();
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, helper.props);
+	await sleep(0);
+	const calls = [];
+	findButton(mounted.rerender().tree).props.onContextMenu({ preventDefault: () => calls.push('preventDefault'), stopPropagation: () => calls.push('stopPropagation') });
+	assert.deepEqual(calls, ['preventDefault', 'stopPropagation'], 'both host-menu guards run, in order');
+	const menu = flatten(mounted.rerender().tree).find((node) => node.props?.className === 'dsh-pe_ruleMenu');
+	assert.ok(menu !== undefined, 'the same menu opens on right-click');
+});
+
+await test('picking the set that is already active writes nothing', async () => {
+	settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'workbuddy', customRules: '[]', shortcutEnabled: true } };
+	const helper = makeHelpers();
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, helper.props);
+	await sleep(0);
+	const before = requests.length;
+	findBadge(mounted.rerender().tree).props.onClick({ preventDefault() {}, stopPropagation() {} });
+	const active = flatten(mounted.rerender().tree).find((node) => node.props?.className === 'dsh-pe_ruleItem' && node.props['aria-checked'] === true);
+	assert.ok(active !== undefined, 'the active set is on screen');
+	active.props.onClick({ preventDefault() {} });
+	await sleep(0);
+	const posts = requests.slice(before).filter((entry) => String(entry.url) === '/api/prompt-enhance/settings' && entry.init?.method === 'POST');
+	assert.equal(posts.length, 0, 'an unchanged selection must not write');
+});
+
+await test('picking another set writes it once and says so on the status line', async () => {
+	settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'workbuddy', customRules: '[]', shortcutEnabled: true } };
+	nextResponse = { body: { ok: true, values: { ruleSet: 'legacy', customRules: '[]', referenceContext: true } } };
+	const helper = makeHelpers();
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, helper.props);
+	await sleep(0);
+	const before = requests.length;
+	findBadge(mounted.rerender().tree).props.onClick({ preventDefault() {}, stopPropagation() {} });
+	const legacy = flatten(mounted.rerender().tree).find((node) => node.props?.className === 'dsh-pe_ruleItem' && /settings\.rules\.legacy/u.test(textOf(node)));
+	assert.ok(legacy !== undefined, 'the other built-ins are offered');
+	legacy.props.onClick({ preventDefault() {} });
+	await sleep(0);
+	const posts = requests.slice(before).filter((entry) => String(entry.url) === '/api/prompt-enhance/settings' && entry.init?.method === 'POST');
+	assert.equal(posts.length, 1, 'exactly one write');
+	assert.deepEqual(posts[0].body, { ruleSet: 'legacy' }, 'only the rule set is written');
+	const status = flatten(mounted.rerender().tree).find((node) => node.props?.className === 'dsh-pe_status');
+	assert.ok(status !== undefined, 'the switch is reported on the status line');
+	assert.match(textOf(status), /rules\.switched/u, 'the report names the switch');
+});
+
+await test('Ctrl+J opens the same menu, and stays inert when shortcuts are off', async () => {
+	// The plugin installs its shortcuts on the platform window; the shared harness
+	// leaves that surface off, so this case provides the two methods it uses and
+	// restores whatever was there before.
+	const previousWindow = globalThis.window;
+	const handlers = [];
+	globalThis.window = {
+		addEventListener: (type, handler) => { if (type === 'keydown') handlers.push(handler); },
+		removeEventListener: () => {},
+	};
+	const fire = (init) => {
+		let prevented = false;
+		for (const handler of handlers) {
+			handler({ altKey: false, shiftKey: false, ctrlKey: true, metaKey: false, code: 'KeyJ', key: 'j', defaultPrevented: false, preventDefault: () => { prevented = true; }, ...init });
+		}
+		return prevented;
+	};
+	const menuShown = (mounted) => flatten(mounted.rerender().tree).some((node) => node.props?.className === 'dsh-pe_ruleMenu');
+	try {
+		installPlugin();
+		settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'legacy', customRules: '[]', shortcutEnabled: false } };
+		let mounted = mountComponent(composerRegistration(installPlugin()).component, makeHelpers().props);
+		await sleep(0);
+		assert.equal(fire({}), false, 'with shortcuts off the key is not consumed');
+		assert.equal(menuShown(mounted), false, 'and no menu appears');
+
+		settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'legacy', customRules: '[]', shortcutEnabled: true } };
+		handlers.length = 0;
+		installPlugin();
+		mounted = mountComponent(composerRegistration(installPlugin()).component, makeHelpers().props);
+		await sleep(0);
+		assert.equal(fire({}), true, 'with shortcuts on the key is consumed');
+		assert.equal(menuShown(mounted), true, 'and the menu opens');
+	} finally {
+		globalThis.window = previousWindow;
+	}
+});
+
+await test('the rule-set key obeys its own switch under the master switch', async () => {
+	// The master switch gates both keys; `ruleShortcutEnabled` gates only the rule-set
+	// key. Off must not consume the press and must not open the menu; on must restore it
+	// without a reload.
+	const previousWindow = globalThis.window;
+	const handlers = [];
+	globalThis.window = {
+		addEventListener: (type, handler) => { if (type === 'keydown') handlers.push(handler); },
+		removeEventListener: () => {},
+	};
+	const fire = (init) => {
+		let prevented = false;
+		for (const handler of handlers) {
+			handler({ altKey: false, shiftKey: false, ctrlKey: true, metaKey: false, code: 'KeyJ', key: 'j', defaultPrevented: false, preventDefault: () => { prevented = true; }, ...init });
+		}
+		return prevented;
+	};
+	const menuShown = (mounted) => flatten(mounted.rerender().tree).some((node) => node.props?.className === 'dsh-pe_ruleMenu');
+	const mountWith = async (ruleShortcutEnabled) => {
+		settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'legacy', customRules: '[]', shortcutEnabled: true, ruleShortcutEnabled } };
+		handlers.length = 0;
+		installPlugin();
+		const mounted = mountComponent(composerRegistration(installPlugin()).component, makeHelpers({ draft: '' }).props);
+		await sleep(0);
+		return mounted;
+	};
+	try {
+		let mounted = await mountWith(false);
+		assert.equal(fire({}), false, 'the per-key switch off must not consume the press');
+		assert.equal(menuShown(mounted), false, 'and nothing opens');
+
+		mounted = await mountWith(true);
+		assert.equal(fire({}), true, 'switching it back on restores the key');
+		assert.equal(menuShown(mounted), true, 'and the menu opens');
+	} finally {
+		globalThis.window = previousWindow;
+	}
+});
+
+await test('the menu is portalled into document.body, not rendered in place', async () => {
+	// The composer lives under an ancestor with a transform, and a fixed-position
+	// child of a transformed box is laid out against that box — that is what put the
+	// menu 145px off at a 320px viewport. Only a portal escapes it, so assert the call.
+	settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'legacy', customRules: '[]', shortcutEnabled: true } };
+	portalCalls.length = 0;
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, makeHelpers().props);
+	await sleep(0);
+	const tree = mounted.rerender().tree;
+	findBadge(tree).props.onClick({ preventDefault() {}, stopPropagation() {} });
+	mounted.rerender();
+	assert.ok(portalCalls.length >= 1, 'opening the menu goes through createPortal');
+	const last = portalCalls[portalCalls.length - 1];
+	assert.equal(last.container, globalThis.document.body, 'and it targets document.body');
+	assert.equal(last.node.props.className, 'dsh-pe_ruleMenu', 'and the node is the rule menu');
+});
+
+await test('the rule-set key follows the configured combination, even with an empty draft', async () => {
+	// The complaint that started this: the key did nothing at all. Two causes are pinned
+	// here — the menu used to refuse to open unless the seat (and therefore a draft) was
+	// on screen, and the combination was hard-coded instead of read from settings.
+	const previousWindow = globalThis.window;
+	const handlers = [];
+	globalThis.window = {
+		addEventListener: (type, handler) => { if (type === 'keydown') handlers.push(handler); },
+		removeEventListener: () => {},
+	};
+	const fire = (init) => {
+		let prevented = false;
+		for (const handler of handlers) {
+			handler({ altKey: false, shiftKey: false, ctrlKey: false, metaKey: false, defaultPrevented: false, preventDefault: () => { prevented = true; }, ...init });
+		}
+		return prevented;
+	};
+	const menuShown = (mounted) => flatten(mounted.rerender().tree).some((node) => node.props?.className === 'dsh-pe_ruleMenu');
+	const withSettings = (ruleShortcut) => {
+		settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'legacy', customRules: '[]', shortcutEnabled: true, ruleShortcut } };
+		handlers.length = 0;
+		installPlugin();
+		return mountComponent(composerRegistration(installPlugin()).component, makeHelpers({ draft: '' }).props);
+	};
+	try {
+		let mounted = withSettings('Ctrl+J');
+		await sleep(0);
+		assert.equal(menuShown(mounted), false, 'the menu starts closed');
+		assert.equal(fire({ ctrlKey: true, code: 'KeyJ', key: 'j' }), true, 'the shipped combination is consumed');
+		assert.equal(menuShown(mounted), true, 'and it opens the menu with an empty draft');
+
+		mounted = withSettings('Ctrl+Alt+K');
+		await sleep(0);
+		assert.equal(fire({ ctrlKey: true, code: 'KeyJ', key: 'j' }), false, 'the old key is no longer bound');
+		assert.equal(menuShown(mounted), false, 'and it opens nothing');
+		assert.equal(fire({ ctrlKey: true, altKey: true, code: 'KeyK', key: 'k' }), true, 'the stored combination is consumed');
+		assert.equal(menuShown(mounted), true, 'and it opens the menu');
+
+		mounted = withSettings('');
+		await sleep(0);
+		assert.equal(fire({ ctrlKey: true, code: 'KeyJ', key: 'j' }), false, 'an unbound key matches nothing');
+		assert.equal(menuShown(mounted), false, 'and no menu appears');
+	} finally {
+		globalThis.window = previousWindow;
+	}
+});
+
+await test('the rule-set key is not swallowed when the composer cannot open the menu', async () => {
+	// A locked composer (mid-send) cannot show the menu. Consuming the press there used to
+	// leave the host with no key and the user with nothing; the key must fall through.
+	const previousWindow = globalThis.window;
+	const handlers = [];
+	globalThis.window = {
+		addEventListener: (type, handler) => { if (type === 'keydown') handlers.push(handler); },
+		removeEventListener: () => {},
+	};
+	const fire = (init) => {
+		let prevented = false;
+		for (const handler of handlers) {
+			handler({ altKey: false, shiftKey: false, ctrlKey: true, metaKey: false, code: 'KeyJ', key: 'j', defaultPrevented: false, preventDefault: () => { prevented = true; }, ...init });
+		}
+		return prevented;
+	};
+	try {
+		settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'legacy', customRules: '[]', shortcutEnabled: true, ruleShortcut: 'Ctrl+J' } };
+		installPlugin();
+		const mounted = mountComponent(composerRegistration(installPlugin()).component, makeHelpers({ draft: '', phase: 'submitting' }).props);
+		await sleep(0);
+		assert.equal(fire({}), false, 'an unopenable menu must not consume the key');
+		assert.equal(flatten(mounted.rerender().tree).some((node) => node.props?.className === 'dsh-pe_ruleMenu'), false, 'and it stays closed');
+	} finally {
+		globalThis.window = previousWindow;
+	}
+});
+
+await test('the menu points aria-activedescendant at the item the keyboard is on', async () => {
+	settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'legacy', customRules: '[]', shortcutEnabled: true } };
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, makeHelpers().props);
+	await sleep(0);
+	let tree = mounted.rerender().tree;
+	findBadge(tree).props.onClick({ preventDefault() {}, stopPropagation() {} });
+	tree = mounted.rerender().tree;
+	let menu = flatten(tree).find((node) => node.props?.className === 'dsh-pe_ruleMenu');
+	const items = flatten(tree).filter((node) => node.props?.className === 'dsh-pe_ruleItem');
+	assert.equal(items.length, 3, 'the three built-ins are offered');
+	const first = menu.props['aria-activedescendant'];
+	assert.ok(typeof first === 'string' && first !== '', 'the menu names an active item');
+	assert.ok(items.some((item) => item.props.id === first), 'and that id belongs to a menu item');
+	menu.props.onKeyDown({ key: 'ArrowDown', preventDefault() {} });
+	tree = mounted.rerender().tree;
+	menu = flatten(tree).find((node) => node.props?.className === 'dsh-pe_ruleMenu');
+	const second = menu.props['aria-activedescendant'];
+	assert.notEqual(second, first, 'the arrow key moves the active item');
+	assert.ok(flatten(tree).some((node) => node.props?.id === second), 'and the new id exists');
+});
+
+await test('the menu opens on the rule that is in force, not on the first built-in', async () => {
+	// The real-machine report: the blue dot was on WorkBuddy while the highlight sat on
+	// the first row, because opening the menu forced the active index to 0.
+	settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'workbuddy', customRules: '[]', shortcutEnabled: true } };
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, makeHelpers().props);
+	await sleep(0);
+	findBadge(mounted.rerender().tree).props.onClick({ preventDefault() {}, stopPropagation() {} });
+	const opened = mounted.rerender().tree;
+	const menu = flatten(opened).find((node) => node.props?.className === 'dsh-pe_ruleMenu');
+	assert.equal(menu.props['aria-activedescendant'], 'dsh-pe-rule-workbuddy', 'the active item is the rule in force');
+	const highlighted = flatten(opened).filter((node) => node.props?.['data-active'] === 'true');
+	assert.equal(highlighted.length, 1, 'exactly one row is highlighted');
+	assert.equal(highlighted[0].props.id, 'dsh-pe-rule-workbuddy', 'and the highlight is on the current rule');
+});
+
+await test('an empty-draft menu hangs off the editor right edge, never the page corner', async () => {
+	// What a real machine showed: with no badge the menu anchored to the editor and opened
+	// at the far left, over the conversation. It must share the badge's corner instead, and
+	// a zero-size anchor must fall back to the bottom centre rather than x=0.
+	const previousWindow = globalThis.window;
+	const previousActive = globalThis.document.activeElement;
+	const handlers = [];
+	globalThis.window = {
+		innerWidth: 1280, innerHeight: 800,
+		addEventListener: (type, handler) => { if (type === 'keydown') handlers.push(handler); },
+		removeEventListener: () => {},
+	};
+	const fire = (init) => {
+		for (const handler of handlers) {
+			handler({ altKey: false, shiftKey: false, ctrlKey: true, metaKey: false, code: 'KeyJ', key: 'j', defaultPrevented: false, preventDefault: () => {}, ...init });
+		}
+	};
+	const openAt = async (rect) => {
+		globalThis.document.activeElement = {
+			isContentEditable: true,
+			tagName: 'DIV',
+			getBoundingClientRect: () => rect,
+		};
+		settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'legacy', customRules: '[]', shortcutEnabled: true, ruleShortcut: 'Ctrl+J' } };
+		handlers.length = 0;
+		installPlugin();
+		const mounted = mountComponent(composerRegistration(installPlugin()).component, makeHelpers({ draft: '' }).props);
+		await sleep(0);
+		mounted.rerender();
+		await sleep(0);
+		fire({});
+		return flatten(mounted.rerender().tree).find((node) => node.props?.className === 'dsh-pe_ruleMenu');
+	};
+	try {
+		const rightEdge = await openAt({ top: 600, bottom: 624, left: 700, right: 1140, width: 440 });
+		assert.equal(rightEdge.props.style.left, '900px', 'right-aligned to the editor, where the badge sits');
+		assert.equal(rightEdge.props['data-placement'], 'above', 'and above the composer');
+		assert.equal(rightEdge.props.style.top, '458px', 'hugging the editor top with the 6px gap');
+
+		const collapsed = await openAt({ top: 0, bottom: 0, left: 0, right: 0, width: 0 });
+		assert.equal(collapsed.props.style.left, '520px', 'a zero-size anchor centres instead of using x=0');
+		assert.equal(collapsed.props.style.top, '656px', 'and sits just above the bottom edge');
+	} finally {
+		globalThis.window = previousWindow;
+		globalThis.document.activeElement = previousActive;
+	}
+});
+
+await test('the menu clamps into a narrow viewport and flips above a seat near the bottom', async () => {
+	// Geometry only: the harness has no layout engine, so the anchor rect is supplied
+	// directly. What is asserted is the algorithm the real browser then obeys — the
+	// 145px overflow 质检 measured came from the transformed ancestor, not from here.
+	settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'legacy', customRules: '[]', shortcutEnabled: true } };
+	const previousWindow = globalThis.window;
+	const openWith = async (viewport, rect) => {
+		globalThis.window = viewport;
+		const mounted = mountComponent(composerRegistration(installPlugin()).component, makeHelpers().props);
+		await sleep(0);
+		let tree = mounted.rerender().tree;
+		const badge = findBadge(tree);
+		badge.props.ref.current = { getBoundingClientRect: () => rect, focus() {} };
+		badge.props.onClick({ preventDefault() {}, stopPropagation() {} });
+		tree = mounted.rerender().tree;
+		return flatten(tree).find((node) => node.props?.className === 'dsh-pe_ruleMenu');
+	};
+	try {
+		// 320px wide, seat at the right edge, no room below: 320 - 240 - 8 = 72.
+		const narrow = await openWith({ innerWidth: 320, innerHeight: 640 }, { top: 600, bottom: 624, left: 290, right: 314 });
+		assert.equal(narrow.props.style.left, '72px', 'the right edge clamp keeps the box on screen');
+		assert.equal(narrow.props['data-placement'], 'above', 'no room below flips it above the seat');
+		assert.ok(Number.parseFloat(narrow.props.style.top) >= 8, 'and it still starts inside the viewport');
+
+		// Seat at the left edge clamps to the margin instead of a negative offset.
+		const leftEdge = await openWith({ innerWidth: 320, innerHeight: 640 }, { top: 300, bottom: 324, left: 0, right: 24 });
+		assert.equal(leftEdge.props.style.left, '8px', 'the left clamp never goes below the margin');
+
+		// Room below: no flip, and the menu hangs off the anchor's own left edge.
+		const roomy = await openWith({ innerWidth: 1280, innerHeight: 800 }, { top: 560, bottom: 584, left: 200, right: 224 });
+		assert.equal(roomy.props['data-placement'], 'below', 'with room below it stays under the seat');
+		assert.equal(roomy.props.style.left, '200px', 'and it lines up with the seat');
+		assert.equal(roomy.props.style.top, '590px', 'six pixels under the seat');
+	} finally {
+		globalThis.window = previousWindow;
+	}
+});
+
+await test('the seat runs the same hooks with an empty draft and with one', async () => {
+	// React counts hooks per instance: a hook placed behind the empty-draft early
+	// return makes the first pass run N and the next N+3, and React throws #310 —
+	// the input slot crashes and the seat never appears. This harness reuses slots
+	// by index and never complains, so the count itself has to be asserted.
+	settingsPayload = { ok: true, values: { referenceContext: true, ruleSet: 'legacy', customRules: '[]', shortcutEnabled: true } };
+	const helper = makeHelpers({ draft: '' });
+	const mounted = mountComponent(composerRegistration(installPlugin()).component, helper.props);
+	await sleep(0);
+	const emptyPass = mounted.instance.index;
+	assert.ok(emptyPass > 0, 'the empty-draft pass rendered the component');
+	helper.state.draft = '做个图';
+	mounted.rerender();
+	assert.equal(mounted.instance.index, emptyPass, 'hooks must not depend on whether the draft is empty');
 });
 
 console.log(failures === 0 ? '\nALL CLIENT TESTS PASSED' : `\n${failures} CLIENT TEST(S) FAILED`);

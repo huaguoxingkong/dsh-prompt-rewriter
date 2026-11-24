@@ -106,6 +106,33 @@ if (isDevBuild) {
 	);
 }
 
+// --- 2b-2. release notes stay user-sized -----------------------------------
+// The user's rule: one user-visible feature or bug per bullet, target 4-5 and
+// a hard cap of 6 per language. Only bilingual sections are checked; older
+// sections predate the 中文/English format and keep their history untouched.
+const releaseSections = [...changelogSrc.matchAll(/^## \[(\d+\.\d+\.\d+)\][^\n]*$/gmu)];
+const entryCounts = [];
+const oversize = [];
+for (let i = 0; i < releaseSections.length; i += 1) {
+	const head = releaseSections[i];
+	const end = i + 1 < releaseSections.length ? releaseSections[i + 1].index : changelogSrc.length;
+	const body = changelogSrc.slice(head.index, end);
+	const zhAt = body.search(/^\*\*中文\*\*\s*$/mu);
+	const enAt = body.search(/^\*\*English\*\*\s*$/mu);
+	if (zhAt < 0 || enAt < 0) continue;
+	const count = (block) => (block.match(/^-\s+\S/gmu) ?? []).length;
+	const zh = count(body.slice(zhAt, enAt));
+	const en = count(body.slice(enAt));
+	const detail = `${head[1]} zh=${zh} en=${en}`;
+	entryCounts.push(detail);
+	if (zh > 6 || en > 6) oversize.push(detail);
+}
+check(
+	'CHANGELOG.md release entries stay within 6 per language',
+	oversize.length === 0,
+	oversize.length > 0 ? oversize.join('; ') : entryCounts.join('; '),
+);
+
 	// --- 2c. composer seat layout is decoupled from host geometry ------------
 	// Regression guard: a negative margin tuned to the host gap, a container-width
 	// variant, or an extreme slot order made the whale icon drift whenever another

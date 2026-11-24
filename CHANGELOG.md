@@ -5,7 +5,33 @@
 格式遵循 [Keep a Changelog 1.1.0](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/)。
 开发期改动写在 `[Unreleased]` 段，发布时改名为 `## [X.Y.Z] - YYYY-MM-DD`；设置页的更新日志只列已发布的正式版本。
 
-## [Unreleased]
+## [1.10.0] - 2026-11-24
+
+**中文**
+
+### 新增
+
+- 规则集快捷切换：增强按钮旁新增当前规则集的徽标，点徽标、右键按钮或按 Ctrl+J 打开同一个菜单，菜单只切换不编辑，选中立即生效并在输入框上方提示已切到「X」。
+- 规则集快捷键可自定义：设置页「快捷键」组新增一行，可录制或手改组合、恢复默认、取消绑定，并有独立开关（默认开，关闭时保留已录组合）；保存前拦下浏览器或系统保留键、以及与本插件其他快捷键的冲突并点名占用者；默认组合改为 Ctrl+J（旧的 Alt+Shift+R 会被 Windows 输入法切换吃掉），行下附一行 ↑/↓ 与 Enter 的使用提示。
+
+### 修复
+
+- 规则集快捷键按了没反应：输入框为空时无响应、菜单飘到页面左上角、被宿主的「搜索会话」等组合静默吃掉；现在贴着输入框展开、窗口变窄也不越界，冲突组合在保存时就拒绝。
+- 看不出当前是哪套规则：徽标不再恒显「自」，内置保持旧 / 意 / WB，自定义按规则名取字（英文取前两个字母，不可用时显示「关」）；下拉不再自动加「自定义：」前缀，规则必须填名，菜单高亮跟随当前规则。
+- 装上新版本后设置页仍显示旧版本号、更新日志停在旧内容：这两处改为按文件变化重读。
+
+**English**
+
+### Added
+
+- Quick rule-set switching: a badge beside the enhance button names the active rule set; click the badge, right-click the button, or press Ctrl+J to open the same menu, which only switches sets. A pick applies at once and the composer reports Switched to "X" above it.
+- The rule-set shortcut is now customizable: a new row in the Keyboard shortcut group records or edits the combination, restores the default, or unbinds it, with its own switch (on by default) that keeps the recorded combination when off. Before saving it refuses browser or system reserved keys and clashes with this plugin's other shortcuts, naming the owner; the default is Ctrl+J because the old Alt+Shift+R is swallowed by the Windows input-language switch, and a hint below covers ↑/↓ and Enter.
+
+### Fixed
+
+- The rule-set shortcut no longer does nothing on an empty composer, no longer sends its menu to the page's top-left corner, and is no longer swallowed by host combinations such as the session search; it now opens against the composer, stays on screen in a narrow window, and refuses conflicting combinations when saving.
+- The badge no longer says 自 for every custom rule: built-ins keep 旧 / 意 / WB, custom rules show initials from their name (two letters for a Latin name, Off when unavailable); the dropdown no longer adds a 自定义: prefix, a rule must be named, and the menu highlight follows the active set.
+- The settings page no longer keeps the previous version number or stale release notes after an update; both are re-read when their files change.
 
 ## [1.9.0] - 2026-11-22
 
