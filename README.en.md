@@ -3,9 +3,23 @@
 English | [中文](README.md)
 
 [![npm](https://img.shields.io/npm/v/dsh-prompt-rewriter.svg)](https://www.npmjs.com/package/dsh-prompt-rewriter)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-prompt-rewriter.svg)](https://www.npmjs.com/package/dsh-prompt-rewriter)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2%2B-4b6bfb.svg)](https://github.com/deepseek-ai)
 [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/huaguoxingkong/dsh-prompt-rewriter)
+
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+[![DSH Plugin Hub](https://dshpluginhub.ai/badges/plugins/dsh-prompt-rewriter.svg)](https://dshpluginhub.ai/plugins/dsh-prompt-rewriter)
+[![DeepSeek Harness plugins](https://deepseekharnessplugins.com/api/badge/huaguoxingkong/dsh-prompt-rewriter)](https://deepseekharnessplugins.com/plugins/huaguoxingkong/dsh-prompt-rewriter)
+[![dsh.so risk: low](https://cdn.dsh.so/badge/dsh-prompt-rewriter.svg)](https://www.dsh.so/artifact/dsh-prompt-rewriter/?ref=badge)
+
+[![GitHub stars](https://img.shields.io/github/stars/huaguoxingkong/dsh-prompt-rewriter.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter)
+[![GitHub forks](https://img.shields.io/github/forks/huaguoxingkong/dsh-prompt-rewriter.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/forks)
+[![GitHub issues](https://img.shields.io/github/issues/huaguoxingkong/dsh-prompt-rewriter.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/issues)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/pulls)
+[![last commit](https://img.shields.io/github/last-commit/huaguoxingkong/dsh-prompt-rewriter.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/commits/main)
+[![release](https://img.shields.io/github/v/release/huaguoxingkong/dsh-prompt-rewriter.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/huaguoxingkong/dsh-prompt-rewriter/ci.yml?label=CI)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/actions/workflows/ci.yml)
 
 Turn the half-formed sentence in your composer into a task brief you can actually run — **in place**. It rewrites the text only: it never sends and never runs anything. Not happy? `Ctrl+Z` puts your draft back.
 
@@ -313,12 +327,6 @@ Issue reports and suggestions count as contributions too; each release credits t
 - [@YuvuShine](https://github.com/YuvuShine): reported #8 (the enhance button vanished when a command block was present, the result was delayed, and the command block got rewritten), with reproduction steps, the root cause and a fix — adopted in 1.8.4.
 - [@moyuboy](https://github.com/moyuboy): reported #4 (a control in the same slot covered the button by about 4px), with the root cause and four possible fixes — adopted in 1.8.3.
 - [@xutiannuo](https://github.com/xutiannuo): reported #2 (the OpenCode provider returned 400 MissingSessionID), with a three-line fix — adopted in 1.7.1.
-
-### Listed on
-
-[![awesome-dsh-plugin](https://img.shields.io/badge/awesome--dsh--plugin-listed-4b6bfb.svg)](https://github.com/dsh-plugin/awesome-dsh-plugin)
-[![dshplugin hub](https://img.shields.io/badge/dshplugin-hub-4b6bfb.svg)](https://dshplugin.com/plugins/dsh-prompt-rewriter)
-[![deepseek harness plugins](https://img.shields.io/badge/deepseek--harness--plugins-listed-4b6bfb.svg)](https://deepseekharnessplugins.com/plugins/dsh-prompt-rewriter)
 
 ---
 

@@ -3,9 +3,23 @@
 [English](README.en.md) | 中文
 
 [![npm](https://img.shields.io/npm/v/dsh-prompt-rewriter.svg)](https://www.npmjs.com/package/dsh-prompt-rewriter)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-prompt-rewriter.svg)](https://www.npmjs.com/package/dsh-prompt-rewriter)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2%2B-4b6bfb.svg)](https://github.com/deepseek-ai)
 [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/huaguoxingkong/dsh-prompt-rewriter)
+
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+[![DSH Plugin Hub](https://dshpluginhub.ai/badges/plugins/dsh-prompt-rewriter.svg)](https://dshpluginhub.ai/plugins/dsh-prompt-rewriter)
+[![DeepSeek Harness plugins](https://deepseekharnessplugins.com/api/badge/huaguoxingkong/dsh-prompt-rewriter)](https://deepseekharnessplugins.com/plugins/huaguoxingkong/dsh-prompt-rewriter)
+[![dsh.so risk: low](https://cdn.dsh.so/badge/dsh-prompt-rewriter.svg)](https://www.dsh.so/artifact/dsh-prompt-rewriter/?ref=badge)
+
+[![GitHub stars](https://img.shields.io/github/stars/huaguoxingkong/dsh-prompt-rewriter.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter)
+[![GitHub forks](https://img.shields.io/github/forks/huaguoxingkong/dsh-prompt-rewriter.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/forks)
+[![GitHub issues](https://img.shields.io/github/issues/huaguoxingkong/dsh-prompt-rewriter.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/issues)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/pulls)
+[![last commit](https://img.shields.io/github/last-commit/huaguoxingkong/dsh-prompt-rewriter.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/commits/main)
+[![release](https://img.shields.io/github/v/release/huaguoxingkong/dsh-prompt-rewriter.svg)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/huaguoxingkong/dsh-prompt-rewriter/ci.yml?label=CI)](https://github.com/huaguoxingkong/dsh-prompt-rewriter/actions/workflows/ci.yml)
 
 把输入框里那句没头没尾的草稿，**原地**改成能直接执行的任务说明。只改内容，不发送、不运行；不满意 `Ctrl+Z` 退回去。
 
@@ -313,12 +327,6 @@ npm pack --dry-run               # 检查发布内容
 - [@YuvuShine](https://github.com/YuvuShine)：报告 #8（命令块存在时增强按钮消失、结果延迟、命令块被改写），给出复现步骤、根因定位与修法，1.8.4 采纳。
 - [@moyuboy](https://github.com/moyuboy)：报告 #4（同槽位控件把按钮覆盖约 4px），给出根因分析与 4 条修法，1.8.3 采纳。
 - [@xutiannuo](https://github.com/xutiannuo)：报告 #2（OpenCode 渠道返回 400 MissingSessionID），给出 3 行修法，1.7.1 采纳。
-
-### 收录
-
-[![awesome-dsh-plugin](https://img.shields.io/badge/awesome--dsh--plugin-listed-4b6bfb.svg)](https://github.com/dsh-plugin/awesome-dsh-plugin)
-[![dshplugin hub](https://img.shields.io/badge/dshplugin-hub-4b6bfb.svg)](https://dshplugin.com/plugins/dsh-prompt-rewriter)
-[![deepseek harness plugins](https://img.shields.io/badge/deepseek--harness--plugins-listed-4b6bfb.svg)](https://deepseekharnessplugins.com/plugins/dsh-prompt-rewriter)
 
 ---
 
