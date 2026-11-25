@@ -10,7 +10,7 @@ English | [中文](README.md)
 Turn the half-formed sentence in your composer into a task brief you can actually run — **in place**. It rewrites the text only: it never sends and never runs anything. Not happy? `Ctrl+Z` puts your draft back.
 
 <p align="center">
-  <img src="docs/images/01-hero-en.gif" alt="Click the whale-tail icon at the right of the composer and the draft becomes a complete prompt" width="807">
+  <img src="docs/images/01-hero-en.gif" alt="Click the whale-tail icon at the right of the composer and the draft becomes a complete prompt" width="820">
   <br>
   <sub>Figure 1: click the whale tail and the draft becomes a complete prompt</sub>
 </p>
