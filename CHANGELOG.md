@@ -5,7 +5,7 @@
 格式遵循 [Keep a Changelog 1.1.0](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/)。
 开发期改动写在 `[Unreleased]` 段，发布时改名为 `## [X.Y.Z] - YYYY-MM-DD`；设置页的更新日志只列已发布的正式版本。
 
-## [1.10.0] - 2026-11-24
+## [1.10.0] - 2026-11-25
 
 **中文**
 

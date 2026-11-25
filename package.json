@@ -26,7 +26,12 @@
     "README.en.md",
     "CHANGELOG.md",
     "LICENSE",
-    "NOTICE.md"
+    "NOTICE.md",
+    "AUTHORS",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md",
+    "VERSIONING.md"
   ],
   "dsh": {
     "bundle": {

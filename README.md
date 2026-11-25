@@ -301,8 +301,10 @@ npm pack --dry-run               # 检查发布内容
 ## 贡献、安全与版本策略
 
 - 提交代码、报告问题与本地验证步骤见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- 参与 issue、讨论与 PR 一律遵守 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)（行为准则），由维护者执行。
 - 安全问题的私下报告方式见 [SECURITY.md](SECURITY.md)。
-- 版本号怎么定、预发布怎么区分见 [VERSIONING.md](VERSIONING.md)。
+- 版本号怎么定、预发布怎么区分、功能怎么弃用见 [VERSIONING.md](VERSIONING.md)。
+- 贡献者口径：[AUTHORS](AUTHORS) 收录作者与维护者；下面的「致谢」收录报告问题并给出可复现根因与可采纳修法的人；完整收录标准见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ### 致谢
 

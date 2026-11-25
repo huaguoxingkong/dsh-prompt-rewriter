@@ -301,8 +301,10 @@ npm pack --dry-run               # inspect the published contents
 ## Contributing, security and versioning
 
 - Sending code, reporting issues and the local verification steps are in [CONTRIBUTING.md](CONTRIBUTING.md).
+- Everyone taking part in issues, discussions and pull requests follows the [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), enforced by the maintainer.
 - How to report a security problem privately is in [SECURITY.md](SECURITY.md).
-- How versions are chosen and how pre-releases are marked is in [VERSIONING.md](VERSIONING.md).
+- How versions are chosen, how pre-releases are marked and how features are deprecated is in [VERSIONING.md](VERSIONING.md).
+- Who counts as a contributor: [AUTHORS](AUTHORS) lists authors and maintainers; the “Thanks” section below lists people who reported a problem together with a reproducible cause and an adoptable fix; the full criteria are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Thanks
 
