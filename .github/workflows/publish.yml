@@ -1,14 +1,19 @@
 name: publish
 
-# Manual dispatch only. A tag pushed by hand should not publish by accident: the
-# release is cut from the Actions UI after CI on main is green, and this workflow
-# verifies the tag/version pair before it touches the registry.
-# The branch the button is pressed on does not matter: the run checks out `tag`
-# and compares against it, so dispatch from main is fine as long as the tag
+# Publishes a release in two ways:
+# 1. Pushing a newly created annotated `v*` tag triggers the run automatically.
+#    Only tags created after this workflow is on main can use this path.
+# 2. Manual dispatch stays as the fallback for an existing tag.
+# Every run verifies the tag/version pair before it touches the registry.
+# The branch the button is pressed on does not matter: the run checks out the
+# tag and compares against it, so dispatch from main is fine as long as the tag
 # exists and its version matches package.json.
 # Pre-release versions (X.Y.Z-dev.N) publish to the `dev` dist-tag only: no
 # GitHub Release, `latest` untouched.
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
@@ -19,13 +24,24 @@ permissions:
   contents: write   # create the GitHub Release
   id-token: write   # npm Trusted Publishing (OIDC), no long-lived token needed
 
+# Serialise runs per tag: a tag push and a manual dispatch for the same tag must
+# never publish at the same time.
+concurrency:
+  group: publish-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   publish:
+    # A push event can also be a force-update of an existing tag; only publish
+    # for tags that were newly created. Manual dispatch has no `created` field.
+    if: github.event_name == 'workflow_dispatch' || github.event.created == true
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ inputs.tag || github.ref_name }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v7
@@ -36,13 +52,27 @@ jobs:
       # OIDC publishing needs a recent npm; the runner's bundled one is too old.
       - run: npm install -g npm@latest && npm --version
 
+      # The tag must be annotated (so it records who cut the release and when)
+      # and its commit must already be on main; a lightweight tag or a tag on a
+      # side branch would bypass the reviewed history.
+      - name: Tag must be annotated and its commit on main
+        shell: bash
+        run: |
+          if [ "$(git cat-file -t "${TAG}")" != "tag" ]; then
+            echo "::error::${TAG} is not an annotated tag"
+            exit 1
+          fi
+          git fetch origin main --quiet
+          if ! git merge-base --is-ancestor "${TAG}^{commit}" origin/main; then
+            echo "::error::${TAG} points to a commit that is not on main"
+            exit 1
+          fi
+          echo "${TAG} is annotated and its commit is on main."
+
       # Dispatch may come from any branch: the checkout above already pinned the
-      # tag, so compare against the input. GITHUB_REF_NAME is the branch the
-      # button was pressed on (e.g. "main"), never the tag.
+      # tag, so compare against the tag resolved in the job env.
       - name: Tag must match package.json
         shell: bash
-        env:
-          TAG: ${{ inputs.tag }}
         run: |
           version="$(node -p "require('./package.json').version")"
           [ "${TAG}" = "v${version}" ] || {
@@ -138,7 +168,6 @@ jobs:
         if: steps.meta.outputs.prerelease == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag }}
         run: |
           name="$(node -p "require('./package.json').name")"
           version="$(node -p "require('./package.json').version")"
@@ -151,4 +180,26 @@ jobs:
         if: steps.meta.outputs.prerelease == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/check-sync.mjs --token "$GH_TOKEN"
+        shell: bash
+        run: |
+          # npm and the GitHub API need a moment to see a fresh publish. Retry
+          # up to 10 times, 30s apart (300s of waiting in total), and fail only
+          # after the last retry. The check script's criteria are unchanged: a
+          # real mismatch still fails.
+          attempt=0
+          while :; do
+            attempt=$((attempt + 1))
+            echo "::group::check-sync attempt ${attempt} (first try + up to 10 retries)"
+            if node scripts/check-sync.mjs --token "$GH_TOKEN"; then
+              echo "::endgroup::"
+              echo "check-sync passed on attempt ${attempt}."
+              exit 0
+            fi
+            echo "::endgroup::"
+            if [ "${attempt}" -gt 10 ]; then
+              echo "::error::check-sync still failing after 10 retries (300s)."
+              exit 1
+            fi
+            echo "check-sync not ready (attempt ${attempt}); retrying in 30s."
+            sleep 30
+          done
