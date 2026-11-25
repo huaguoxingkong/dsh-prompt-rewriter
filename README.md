@@ -104,7 +104,7 @@ dsh plugin --profile web add github:huaguoxingkong/dsh-prompt-rewriter
 <p align="center">
   <img src="docs/images/05-rule-menu.gif" alt="按 Ctrl+J 打开规则选择器，↑↓ 移动，Enter 应用" width="820">
   <br>
-  <sub>图 5：Ctrl+J 打开规则集菜单，↑↓ 移动，Enter 应用</sub>
+  <sub>图 2：Ctrl+J 打开规则集菜单，↑↓ 移动，Enter 应用</sub>
 </p>
 
 - **空输入框也能用**：菜单贴着输入框展开，窗口变窄也不会跑出屏幕；打开时高亮和蓝点都指向当前生效的规则集，不是第一项。
@@ -117,7 +117,7 @@ dsh plugin --profile web add github:huaguoxingkong/dsh-prompt-rewriter
 <p align="center">
   <img src="docs/images/06-badge.png" alt="规则集徽标的五种样子：旧、意、WB、EN、关" width="820">
   <br>
-  <sub>图 6：规则集徽标的五种样子：旧、意、WB、EN、关</sub>
+  <sub>图 3：规则集徽标的五种样子：旧、意、WB、EN、关</sub>
 </p>
 
 - 内置三套在中文界面显示 **旧 / 意 / WB**（英文界面为 L / I / WB）。
@@ -129,7 +129,7 @@ dsh plugin --profile web add github:huaguoxingkong/dsh-prompt-rewriter
 <p align="center">
   <img src="docs/images/07-shortcut-row.png" alt="设置页的快捷键组：增强键、规则集键、独立开关与使用提示" width="620">
   <br>
-  <sub>图 7：快捷键组：两个键各有开关、当前组合与恢复默认</sub>
+  <sub>图 4：快捷键组：两个键各有开关、当前组合与恢复默认</sub>
 </p>
 
 ---
@@ -139,7 +139,7 @@ dsh plugin --profile web add github:huaguoxingkong/dsh-prompt-rewriter
 <p align="center">
   <img src="docs/images/02-button-states.png" alt="按钮状态：空闲、改写中、完成可回退、失败可重试" width="820">
   <br>
-  <sub>图 2：按钮四种状态：空闲、改写中、完成可回退、失败可重试</sub>
+  <sub>图 5：按钮四种状态：空闲、改写中、完成可回退、失败可重试</sub>
 </p>
 
 | 状态 | 你看到的 | 意味着 |
@@ -156,7 +156,7 @@ dsh plugin --profile web add github:huaguoxingkong/dsh-prompt-rewriter
 <p align="center">
   <img src="docs/images/04-settings.png" alt="设置页：规则、参考内容与快捷键" width="820">
   <br>
-  <sub>图 4：设置页：规则、参考内容与快捷键</sub>
+  <sub>图 6：设置页：规则、参考内容与快捷键</sub>
 </p>
 
 `设置 → 提示词增强`。六个开关、两个选择器（模型、规则版本），规则版本下拉里还有「自定义规则」入口——**只影响这个按钮，不影响正常发送**。
@@ -191,7 +191,7 @@ dsh plugin --profile web add github:huaguoxingkong/dsh-prompt-rewriter
 <p align="center">
   <img src="docs/images/03-context-modes.png" alt="空会话 vs 已有对话：图标右下角的小圆点是标记" width="820">
   <br>
-  <sub>图 3：空会话只看草稿；已有对话时按钮右下角出现蓝点</sub>
+  <sub>图 7：空会话只看草稿；已有对话时按钮右下角出现蓝点</sub>
 </p>
 
 - **对话**：按钮右下角有蓝色小圆点，代表会读前面聊过的内容；没有圆点就只看当前草稿。圆点描述的是**此刻点下去会怎样**，所以它在运行中隐藏、失败后恢复、按钮变成回退箭头时消失。

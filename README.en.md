@@ -104,7 +104,7 @@ Two keys, two jobs: the enhance key triggers a rewrite, the rule-set key opens t
 <p align="center">
   <img src="docs/images/05-rule-menu-en.gif" alt="Press Ctrl+J to open the rule picker, ↑↓ to move, Enter to apply" width="820">
   <br>
-  <sub>Figure 5: Ctrl+J opens the rule picker; ↑↓ moves, Enter applies</sub>
+  <sub>Figure 2: Ctrl+J opens the rule picker; ↑↓ moves, Enter applies</sub>
 </p>
 
 - **It works on an empty composer**: the menu opens against the composer and stays on screen when the window narrows; the highlight and the radio dot both point at the rule set in effect, not at the first row.
@@ -117,7 +117,7 @@ Two keys, two jobs: the enhance key triggers a rewrite, the rule-set key opens t
 <p align="center">
   <img src="docs/images/06-badge-en.png" alt="The five badge states: L, I, WB, EN, Off" width="820">
   <br>
-  <sub>Figure 6: the five badge states — L, I, WB, EN, Off</sub>
+  <sub>Figure 3: the five badge states — L, I, WB, EN, Off</sub>
 </p>
 
 - The three built-ins show **L / I / WB** in the English UI (旧 / 意 / WB in Chinese).
@@ -129,7 +129,7 @@ Two keys, two jobs: the enhance key triggers a rewrite, the rule-set key opens t
 <p align="center">
   <img src="docs/images/07-shortcut-row-en.png" alt="The Shortcuts group in settings: enhance key, rule-set key, separate switches and a hint" width="620">
   <br>
-  <sub>Figure 7: the Shortcuts group — a switch, a combination and Restore default per key</sub>
+  <sub>Figure 4: the Shortcuts group — a switch, a combination and Restore default per key</sub>
 </p>
 
 ---
@@ -139,7 +139,7 @@ Two keys, two jobs: the enhance key triggers a rewrite, the rule-set key opens t
 <p align="center">
   <img src="docs/images/02-button-states-en.png" alt="Button states: idle, rewriting, done with undo, failed with retry" width="820">
   <br>
-  <sub>Figure 2: the four button states — idle, rewriting, done with undo, failed with retry</sub>
+  <sub>Figure 5: the four button states — idle, rewriting, done with undo, failed with retry</sub>
 </p>
 
 | State | What you see | What it means |
@@ -156,7 +156,7 @@ Two keys, two jobs: the enhance key triggers a rewrite, the rule-set key opens t
 <p align="center">
   <img src="docs/images/04-settings-en.png" alt="Settings: rules, references and shortcuts" width="820">
   <br>
-  <sub>Figure 4: the settings page — rules, references and shortcuts</sub>
+  <sub>Figure 6: the settings page — rules, references and shortcuts</sub>
 </p>
 
 `Settings → Prompt Enhance`. Six switches, two pickers (model, rule set), and a “custom rules” entry in the rule-set picker — **this only affects the button, never normal sending**.
@@ -191,7 +191,7 @@ Two keys, two jobs: the enhance key triggers a rewrite, the rule-set key opens t
 <p align="center">
   <img src="docs/images/03-context-modes-en.png" alt="Empty session vs existing conversation: the small dot at the icon's lower-right" width="820">
   <br>
-  <sub>Figure 3: an empty session reads the draft only; with a conversation a blue dot appears</sub>
+  <sub>Figure 7: an empty session reads the draft only; with a conversation a blue dot appears</sub>
 </p>
 
 - **Conversation**: a blue dot at the button's lower-right means it will read what was said before; without it, only the current draft. The dot describes **what a click would do right now**, so it hides while running, comes back after a failure, and disappears while the button is an undo arrow.
