@@ -14,6 +14,10 @@
 - 规则集快捷切换：增强按钮旁新增当前规则集的徽标，点徽标、右键按钮或按 Ctrl+J 打开同一个菜单，菜单只切换不编辑，选中立即生效并在输入框上方提示已切到「X」。
 - 规则集快捷键可自定义：设置页「快捷键」组新增一行，可录制或手改组合、恢复默认、取消绑定，并有独立开关（默认开，关闭时保留已录组合）；保存前拦下浏览器或系统保留键、以及与本插件其他快捷键的冲突并点名占用者；默认组合改为 Ctrl+J（旧的 Alt+Shift+R 会被 Windows 输入法切换吃掉），行下附一行 ↑/↓ 与 Enter 的使用提示。
 
+### 变更
+
+- 所有功能默认开启：参考输入框图片、增强快捷键总开关都改为默认打开（原本默认开启的保持不变）；设置页仍可逐项关掉，显式关闭会一直生效。
+
 ### 修复
 
 - 规则集快捷键按了没反应：输入框为空时无响应、菜单飘到页面左上角、被宿主的「搜索会话」等组合静默吃掉；现在贴着输入框展开、窗口变窄也不越界，冲突组合在保存时就拒绝。
@@ -26,6 +30,10 @@
 
 - Quick rule-set switching: a badge beside the enhance button names the active rule set; click the badge, right-click the button, or press Ctrl+J to open the same menu, which only switches sets. A pick applies at once and the composer reports Switched to "X" above it.
 - The rule-set shortcut is now customizable: a new row in the Keyboard shortcut group records or edits the combination, restores the default, or unbinds it, with its own switch (on by default) that keeps the recorded combination when off. Before saving it refuses browser or system reserved keys and clashes with this plugin's other shortcuts, naming the owner; the default is Ctrl+J because the old Alt+Shift+R is swallowed by the Windows input-language switch, and a hint below covers ↑/↓ and Enter.
+
+### Changed
+
+- All features now default to on: reading images in the composer and the enhance-shortcut master switch are on out of the box (the others were already on); every one can still be turned off in Settings, and an explicit off sticks.
 
 ### Fixed
 

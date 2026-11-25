@@ -303,7 +303,7 @@ await test('the settings section is registered with a localized nav label', asyn
 
 await test('the page renders every option once settings load', async () => {
 	requests = [];
-	stored = { enhanceProvider: '', enhanceModel: '', useCustomModel: false, referenceImages: false, referenceContext: true };
+	stored = { enhanceProvider: '', enhanceModel: '', useCustomModel: false, referenceImages: true, referenceContext: true, shortcutEnabled: true };
 	const settings = settingsOf(install());
 	let tree = mount(settings.component, { t });
 	await sleep(0);
@@ -326,9 +326,9 @@ await test('the page renders every option once settings load', async () => {
 	assert.equal(switches.length, 6, 'six toggles: model, context, images, files, shortcut, rule shortcut');
 	assert.equal(switches[0].props['aria-checked'], 'false', 'custom model is off by default');
 	assert.equal(switches[1].props['aria-checked'], 'true', 'context is on by default');
-	assert.equal(switches[2].props['aria-checked'], 'false', 'images is off by default');
+	assert.equal(switches[2].props['aria-checked'], 'true', 'images is on by default');
 	assert.equal(switches[3].props['aria-checked'], 'true', 'file content is on by default');
-	assert.equal(switches[4].props['aria-checked'], 'false', 'the keyboard shortcut is off by default');
+	assert.equal(switches[4].props['aria-checked'], 'true', 'the keyboard shortcut is on by default');
 	assert.equal(switches[5].props['aria-checked'], 'true', 'the rule-set key has its own switch, on by default');
 });
 

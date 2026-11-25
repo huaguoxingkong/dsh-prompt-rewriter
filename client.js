@@ -676,12 +676,12 @@ window.__ModuleLoader__.load({
 			/**
 			 * Whether the keyboard command is currently allowed to fire.
 			 *
-			 * Defaults to false so the command is inert until a mounted composer reports
-			 * that the user turned the switch on. That keeps the "off by default" promise
-			 * even in the window before the settings request resolves.
+			 * Starts inert until a mounted composer reports the stored value, so the
+			 * global listener never races the first settings read; missing keys resolve
+			 * on, matching the rest of the default-on switches.
 			 */
 			let shortcutAllowed = false;
-			const setShortcutEnabled = (enabled) => { shortcutAllowed = enabled === true; };
+			const setShortcutEnabled = (enabled) => { shortcutAllowed = enabled !== false; };
 			const shortcutEnabled = () => shortcutAllowed;
 			// The combo that opens the rule menu. Kept beside the on/off switch for the
 			// same reason: the window listener is global, so the value it compares against
@@ -1127,9 +1127,9 @@ window.__ModuleLoader__.load({
 			// conversation to consult. A previous run's outcome is irrelevant: a failed
 			// or never-attempted enhancement does not change what the next one will do.
 			const [willUseContext, setWillUseContext] = useState(false);
-			// Whether the keyboard command is active for this profile. Default OFF: the
-			// feature is opt-in, so a global key never fires on a user who did not ask for
-			// it. Read from the same settings response as the other switches.
+			// Whether the keyboard command is active for this profile. Starts false until
+			// the first settings read, then follows the stored switch (on by default,
+			// explicit off honoured). Read from the same response as the other switches.
 			const [shortcutOn, setShortcutOn] = useState(false);
 			// Which rule set the next run will use, and the choices the menu offers.
 			// Read from the same settings response as the switches above, and refreshed
@@ -1155,7 +1155,7 @@ window.__ModuleLoader__.load({
 						const switchOn = settings?.ok === true && settings.values?.referenceContext !== false;
 						const hasContext = status?.ok === true && status.hasContext === true;
 						setWillUseContext(switchOn && hasContext);
-						const allowed = settings?.ok === true && settings.values?.shortcutEnabled === true;
+						const allowed = settings?.ok === true && settings.values?.shortcutEnabled !== false;
 						setShortcutOn(allowed);
 						taskStore.setShortcutEnabled(allowed);
 						taskStore.setRuleShortcutEnabled(settings?.ok === true && settings.values?.ruleShortcutEnabled !== false);

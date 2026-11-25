@@ -958,9 +958,9 @@ await test('settings GET returns the defaults', async () => {
 		enhanceModel: '',
 		useCustomModel: false,
 		referenceFiles: true,
-		referenceImages: false,
+		referenceImages: true,
 		referenceContext: true,
-		shortcutEnabled: false,
+		shortcutEnabled: true,
 		ruleSet: 'legacy',
 		// Ships bound: the badge is still the primary way in, so a default key that opens
 		// the same menu is a shortcut rather than the only route.
@@ -972,6 +972,19 @@ await test('settings GET returns the defaults', async () => {
 		// keeps older configs readable without touching the three shipped rule sets.
 		customRules: '[]',
 	});
+});
+
+await test('settings GET keeps explicit false for the switches that default to on', async () => {
+	const { ctx, routes } = makeCtx({ llm: fakeLlm({ textParts: ['x'] }) });
+	ctx.settings = { update: async () => {} };
+	ctx.get = ((original) => (name) => (name === 'settings' ? ctx.settings : name === 'profileContext' ? { entryId: 'dsh-prompt-rewriter' } : original(name)))(ctx.get.bind(ctx));
+	plugin.apply(ctx, { referenceImages: false, shortcutEnabled: false });
+	const route = routeByPath(routes, '/api/prompt-enhance/settings');
+	const response = await route.fetch(new Request('http://x/api/prompt-enhance/settings', { method: 'GET' }));
+	const body = await response.json();
+	assert.equal(body.ok, true);
+	assert.equal(body.values.referenceImages, false, 'an explicit false must survive the new default');
+	assert.equal(body.values.shortcutEnabled, false, 'an explicit false must survive the new default');
 });
 
 await test('settings GET also reports the package version and project URL', async () => {

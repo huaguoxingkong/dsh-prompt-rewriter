@@ -77,7 +77,7 @@ export const Config = z.object({
 	referenceImages: z.boolean().volatile(),
 	referenceFiles: z.boolean().volatile(),
 	referenceContext: z.boolean().volatile(),
-	/** Opt-in keyboard shortcut. Off by default so no global key fires unasked. */
+	/** Keyboard shortcut master switch. On by default; each row can be turned off. */
 	shortcutEnabled: z.boolean().volatile(),
 	/** Combo that opens the rule-set menu. An empty string is a real choice: no key. */
 	ruleShortcut: z.string().volatile(),
@@ -102,16 +102,16 @@ const DEFAULTS = Object.freeze({
 	// behaviour that existed before the setting did.
 	enhanceProvider: '',
 	enhanceModel: '',
-	// Off by default: the picker is inert until the user opts into a fixed model.
+	// Off by default: the picker is inert until the user picks a fixed model.
 	useCustomModel: false,
-	// Off by default: reading the composer's images costs tokens and is opt-in.
-	referenceImages: false,
+	// On by default: reading the composer's images is part of the shipped experience.
+	referenceImages: true,
 	// File content is evidence only; two small files per enhancement at most.
 	referenceFiles: true,
 	// On by default: this is the context-aware enhancement shipped earlier.
 	referenceContext: true,
-	// Off by default: a plugin must not claim a global key unless the user opts in.
-	shortcutEnabled: false,
+	// On by default: both keys ship usable, and each row can be switched off.
+	shortcutEnabled: true,
 	// Ships bound: the rule-set menu also has a visible badge, so a default key that
 	// opens the same menu is a shortcut, never the only way in.
 	ruleShortcut: DEFAULT_RULE_SHORTCUT,
@@ -1691,10 +1691,10 @@ function readPreferences(ctx, config) {
 		enhanceProvider: source.enhanceProvider,
 		enhanceModel: source.enhanceModel,
 		useCustomModel: source.useCustomModel === true,
-		referenceImages: source.referenceImages === true,
+		referenceImages: source.referenceImages !== false,
 		referenceFiles: source.referenceFiles !== false,
 		referenceContext: source.referenceContext !== false,
-		shortcutEnabled: source.shortcutEnabled === true,
+		shortcutEnabled: source.shortcutEnabled !== false,
 		ruleShortcut: readShortcutCombo(source.ruleShortcut, DEFAULTS.ruleShortcut),
 		ruleShortcutEnabled: source.ruleShortcutEnabled !== false,
 		ruleSet: isRuleSelection(source.ruleSet) ? source.ruleSet : RULE_SET_LEGACY,
