@@ -1157,6 +1157,69 @@ await test('the enhance recorder refuses the rule-set key', async () => {
 	assert.ok(String(hint?.children?.[0] ?? '').startsWith('settings.shortcut.rejected'), 'the row reports the clash; hint was: ' + String(hint?.children?.[0]));
 });
 
+await test('the rule-set recorder refuses the enhance key the host currently resolves', async () => {
+	// Regression: the page used to compare against the constant Alt+Shift+E, while the
+	// real default is Ctrl+E on desktop and Ctrl+Alt+E in the browser. The host's own
+	// `keys` for the enhance command is the value that must be refused.
+	requests = [];
+	shortcutCatalog = [{
+		id: 'prompt-enhance.run',
+		keys: ['Ctrl', '+', 'Alt', '+', 'E'],
+		label: () => '增强提示词',
+		binding: { code: 'KeyE', modifiers: ['control', 'alt'] },
+	}];
+	const { mounted, binding, error, writes } = await mountRuleShortcutRow('Alt+Shift+R');
+	binding().props.onClick();
+	mounted.rerender();
+	pressCombo(binding(), { key: 'e', code: 'KeyE', ctrlKey: true, altKey: true });
+	await sleep(10);
+	mounted.rerender();
+	assert.equal(writes().length, 0, 'a duplicate of the enhance key must not reach the config');
+	const shown = error();
+	assert.ok(shown !== undefined, 'the refusal is visible under the row');
+	assert.match(String(shown.children?.[0] ?? ''), /settings\.ruleShortcut\.sibling/u, 'error was: ' + String(shown.children?.[0]));
+});
+
+await test('the plugin own host command row is part of the host conflict scan', async () => {
+	// Regression: the host scan skipped the row whose id is the enhance command. With a
+	// blank display keys field the sibling check cannot see it, so the host scan must.
+	requests = [];
+	shortcutCatalog = [{
+		id: 'prompt-enhance.run',
+		keys: [],
+		label: () => '增强提示词',
+		binding: { code: 'KeyE', modifiers: ['control', 'alt'] },
+	}];
+	const { mounted, binding, error, writes } = await mountRuleShortcutRow('Alt+Shift+R');
+	binding().props.onClick();
+	mounted.rerender();
+	pressCombo(binding(), { key: 'e', code: 'KeyE', ctrlKey: true, altKey: true });
+	await sleep(10);
+	mounted.rerender();
+	assert.equal(writes().length, 0, 'the host scan must see the plugin command row');
+	const shown = error();
+	assert.ok(shown !== undefined, 'the refusal is visible under the row');
+	assert.match(String(shown.children?.[0] ?? ''), /settings\.ruleShortcut\.hostOwned/u, 'error was: ' + String(shown.children?.[0]));
+});
+
+await test('a combination that is not the real enhance key is still allowed', async () => {
+	// The old constant made Alt+Shift+E look like the enhance key and refused it. It is
+	// not bound to the plugin's command, so it must be accepted.
+	requests = [];
+	shortcutCatalog = [{
+		id: 'prompt-enhance.run',
+		keys: ['Ctrl', '+', 'Alt', '+', 'E'],
+		label: () => '增强提示词',
+		binding: { code: 'KeyE', modifiers: ['control', 'alt'] },
+	}];
+	const { mounted, binding, writes } = await mountRuleShortcutRow('Alt+Shift+R');
+	binding().props.onClick();
+	mounted.rerender();
+	pressCombo(binding(), { key: 'e', code: 'KeyE', altKey: true, shiftKey: true });
+	await sleep(10);
+	assert.deepEqual(writes(), [{ ruleShortcut: 'Alt+Shift+E' }], 'the non-conflicting combo must be saved once');
+});
+
 await test('a combination the host already reacts to is refused at record time', async () => {
 	// The real-machine report: Ctrl+K opens session search, so Ctrl+Alt+K is a superset the
 	// host still reacts to first. The host compares modifiers for equality and calls it
@@ -1327,7 +1390,7 @@ await test('recording a reserved combination is refused before any write', async
 	pressCombo(binding(), { key: 't', code: 'KeyT', ctrlKey: true });
 	await sleep(0);
 	mounted.rerender();
-	assert.equal(writes().length, 0, 'a refused combination must not reach the config');
+	assert.equal(writes().length, 0, 'a refused combination must not reach the config; got ' + JSON.stringify(writes()));
 	const shown = error();
 	assert.ok(shown !== undefined, 'the refusal is visible under the row');
 	assert.ok(String(shown.children?.[0]).includes('settings.ruleShortcut.reserved'), 'error was: ' + String(shown.children?.[0]));

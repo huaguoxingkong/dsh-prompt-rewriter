@@ -1061,7 +1061,10 @@ window.__ModuleLoader__.load({
 				const codes = [other.code, other.secondCode].filter((code) => typeof code === 'string' && code !== '');
 				return codes.includes(binding.code);
 			};
-			const hit = (Array.isArray(rows) ? rows : []).find((row) => row?.id !== SHORTCUT_ID && covers(row?.binding));
+			// Include this plugin's own command row: its live binding is exactly what a
+			// sibling key must not duplicate, and excluding it was why Ctrl+Alt+E could
+			// be recorded as the rule-set key without naming the enhance command.
+			const hit = (Array.isArray(rows) ? rows : []).find((row) => covers(row?.binding));
 			if (hit === undefined) return undefined;
 			const label = typeof hit.label === 'function' ? hit.label() : hit.label;
 			const owner = typeof label === 'string' && label !== ''
@@ -1127,10 +1130,6 @@ window.__ModuleLoader__.load({
 			// conversation to consult. A previous run's outcome is irrelevant: a failed
 			// or never-attempted enhancement does not change what the next one will do.
 			const [willUseContext, setWillUseContext] = useState(false);
-			// Whether the keyboard command is active for this profile. Starts false until
-			// the first settings read, then follows the stored switch (on by default,
-			// explicit off honoured). Read from the same response as the other switches.
-			const [shortcutOn, setShortcutOn] = useState(false);
 			// Which rule set the next run will use, and the choices the menu offers.
 			// Read from the same settings response as the switches above, and refreshed
 			// when the menu opens so a rule edited in the settings page shows up.
@@ -1156,7 +1155,6 @@ window.__ModuleLoader__.load({
 						const hasContext = status?.ok === true && status.hasContext === true;
 						setWillUseContext(switchOn && hasContext);
 						const allowed = settings?.ok === true && settings.values?.shortcutEnabled !== false;
-						setShortcutOn(allowed);
 						taskStore.setShortcutEnabled(allowed);
 						taskStore.setRuleShortcutEnabled(settings?.ok === true && settings.values?.ruleShortcutEnabled !== false);
 						if (settings?.ok === true) taskStore.setRuleShortcut(settings.values?.ruleShortcut);
@@ -1828,12 +1826,11 @@ window.__ModuleLoader__.load({
 			// while the draft is empty — placing this after those guards crashed the whole
 			// composer control.
 			useEffect(() => {
-				if (!shortcutOn) {
-					// The feature is off: make sure no stale handler answers the command.
-					return undefined;
-				}
+				// Always publish the handler: the global command checks the live switch
+				// (`taskStore.shortcutEnabled()`) on every press, so flipping the master
+				// switch in Settings takes effect without remounting the composer.
 				return taskStore.attach(sessionId, () => onClickRef.current());
-			}, [sessionId, shortcutOn]);
+			}, [sessionId]);
 
 			/**
 			 * Publish this composer as the live delivery target for its session.
@@ -3192,9 +3189,15 @@ window.__ModuleLoader__.load({
 			 * this row (the same slot `save` uses for a failed write).
 			 */
 			const commitRuleShortcut = async (combo, binding) => {
-				// `keys` is the host's display form; an unmodified command is safer compared
-				// against the canonical default (macOS renders it with symbols).
-				const sibling = shortcut.isDefault ? DEFAULT_SHORTCUT : shortcut.keys;
+				// Read the enhance key from the host catalog, not from a constant: the real
+				// default is Ctrl+E on desktop and Ctrl+Alt+E in the browser, and the host's
+				// `keys` already carries the platform-specific display form. An empty value
+				// means the catalog has not published the command yet, so the host check
+				// below is the remaining guard.
+				// An empty value just means the catalog has not published the command yet;
+				// the reserved-key check still runs, and the host scan below is the second
+				// guard for the plugin's own binding.
+				const sibling = shortcut.keys;
 				const problem = describeRuleShortcutProblem(combo, sibling, t);
 				if (problem !== undefined) {
 					setErrorRow('ruleShortcut');

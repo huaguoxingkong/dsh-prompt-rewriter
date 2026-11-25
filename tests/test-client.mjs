@@ -1482,6 +1482,44 @@ await test('the shortcut is inert while the switch is off', async () => {
 	assert.equal(enhanceCalls().length, 0, 'the command must do nothing while the switch is off');
 });
 
+await test('opening the shortcut switch in Settings makes the key work without remounting', async () => {
+	// Regression: the composer used to register its key handler only when the switch
+	// happened to be on at mount; opening it later left the command with no trigger.
+	requests.length = 0;
+	nextResponse = { body: { ok: true, text: '增强结果', mode: 'plain' } };
+	settingsPayload = { ok: true, values: { referenceContext: true, referenceImages: false, useCustomModel: false, shortcutEnabled: false, enhanceProvider: '', enhanceModel: '' } };
+	const registrations = installPlugin();
+	const helper = makeHelpers({ draft: '草稿' });
+	const composer = mountComponent(composerRegistration(registrations).component, helper.props);
+	await sleep(0);
+	composer.rerender();
+
+	const command = registrations.commands.find((c) => c.id === 'prompt-enhance.run');
+	command.run();
+	await sleep(0);
+	assert.equal(enhanceCalls().length, 0, 'the key is off before the settings write');
+
+	// The registered component is a pure wrapper around the section. This harness
+	// mounts one root and expands children with fresh hook slots, so mount the child
+	// wrapper returns directly; otherwise the section's async load is lost on expand.
+	const Section = settingsRegistration(registrations).component;
+	const wrapped = Section({});
+	assert.equal(typeof wrapped.type, 'function', 'the wrapper must return the section component');
+	const settings = mountComponent(wrapped.type, wrapped.props);
+	await sleep(10);
+	const settingsTree = settings.rerender().tree;
+	const shortcutSwitch = flatten(settingsTree).find((n) => n.props?.['aria-label'] === 'settings.shortcutEnabled');
+	assert.ok(shortcutSwitch, 'the Shortcuts row must render its master switch');
+	assert.equal(shortcutSwitch.props['aria-checked'], 'false', 'the fixture starts with the switch off');
+	await shortcutSwitch.props.onClick();
+	await sleep(0);
+	settings.rerender();
+
+	command.run();
+	await sleep(0);
+	assert.equal(enhanceCalls().length, 1, 'the key must work immediately after the settings save, without a remount');
+});
+
 /**
  * Load a fresh instance of the plugin's client half.
  *
