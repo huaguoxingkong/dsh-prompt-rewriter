@@ -5,6 +5,22 @@
 格式遵循 [Keep a Changelog 1.1.0](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/)。
 开发期改动写在 `[Unreleased]` 段，发布时改名为 `## [X.Y.Z] - YYYY-MM-DD`；设置页的更新日志只列已发布的正式版本。
 
+## [Unreleased]
+
+**中文**
+
+### 修复
+
+- 带图片或附件的草稿点增强不再失败（新版 Harness 上会报 cannot get property "root" without inject）：插件现在同时兼容新旧两版宿主，图片与附件照常读入。
+- 思考型模型把输出预算花在思考上、接口以「输出上限」报错结束时，现在会按既有阶梯翻倍预算重试，不再一次就失败；模型自带的输出上限也会被正确读取，起始预算不再恒为 2000。
+
+**English**
+
+### Fixed
+
+- Enhancing a draft that carries an image or attachment no longer fails on newer Harness builds (it reported cannot get property "root" without inject): both host generations are supported and attachments are read again.
+- When a reasoning model spent its budget thinking and the provider ended with an output-limit error, the run failed once instead of retrying: it now doubles the budget along the existing ladder, and the model's own output cap is read so the first attempt no longer starts at 2000 tokens.
+
 ## [1.10.0] - 2026-11-25
 
 **中文**

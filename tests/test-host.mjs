@@ -65,10 +65,12 @@ function fakeLlm({
 	textSequence = null,
 	reasoningParts = [],
 	finish = { kind: 'stop' },
+	finishSequence = null,
 	throws = null,
 	providers = [{ id: 'p1', name: 'P1' }],
 	contextWindow = undefined,
 	declaredOutput = undefined,
+	defaultMaxTokens = undefined,
 	calls = [],
 } = {}) {
 	return {
@@ -77,6 +79,7 @@ function fakeLlm({
 		resolveModelInfo: async () => ({
 			...(contextWindow === undefined ? {} : { context: { contextWindow } }),
 			...(declaredOutput === undefined ? {} : { limits: { maxOutputTokens: declaredOutput } }),
+			...(defaultMaxTokens === undefined ? {} : { defaultMaxTokens }),
 		}),
 		prepareCall: async (config) => {
 			if (throws) throw throws;
@@ -100,7 +103,12 @@ function fakeLlm({
 					// thinks before answering emits these before any text.
 					for (const part of reasoningParts) yield { type: 'reasoning-delta', index: 0, text: part };
 					for (const part of parts) yield { type: 'text-delta', index: 0, text: part };
-					yield { type: 'finish', reason: finish };
+					// finishSequence answers call N with entry N, so a retry can end
+					// differently from the attempt that ran out of budget.
+					const reason = finishSequence === null
+						? finish
+						: finishSequence[Math.min(calls.length - 1, finishSequence.length - 1)];
+					yield { type: 'finish', reason };
 				},
 			};
 		},
@@ -1450,6 +1458,56 @@ await test('reasoning with no visible text is retried, then reported as a limit'
 	assert.equal(llm.calls.length > 1, true, 'it must have retried before giving up');
 });
 
+await test("the host's defaultMaxTokens bounds the ladder (issue #13)", async () => {
+	// The host's own per-model default is what it spends when a request omits
+	// maxTokens. Ignoring it started every ladder at the configured 2000 with no
+	// reasoning headroom, and let growth run to the hard 16000 instead of the model's
+	// real cap.
+	const llm = fakeLlm({ textParts: ['ok'], defaultMaxTokens: 8192 });
+	const { ctx, routes } = makeCtx({ llm });
+	plugin.apply(ctx, { maxOutputTokens: 2000 });
+	await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+	assert.equal(llm.calls.length, 1);
+	assert.ok(llm.calls[0].maxTokens > 2000, `headroom must apply (got ${llm.calls[0].maxTokens})`);
+	assert.ok(llm.calls[0].maxTokens <= 8192, `never above the host default (got ${llm.calls[0].maxTokens})`);
+});
+
+await test('an error finish that spent the budget on reasoning is retried (issue #13)', async () => {
+	// Some adapters report "output limit reached" as an error finish instead of
+	// `max-tokens`. Throwing on it skipped the doubling ladder entirely.
+	const llm = fakeLlm({
+		reasoningParts: ['思考'.repeat(40)],
+		textSequence: ['', '增强结果'],
+		finishSequence: [
+			{ kind: 'error', failure: { code: 'MAX_TOKENS', message: 'output limit reached' } },
+			{ kind: 'stop' },
+		],
+		defaultMaxTokens: 8192,
+	});
+	const { ctx, routes } = makeCtx({ llm });
+	plugin.apply(ctx, { maxOutputTokens: 2000 });
+	const result = await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+	assert.equal(result.json.ok, true);
+	assert.equal(result.json.text, '增强结果');
+	assert.equal(llm.calls.length, 2, 'the error finish must be retried, not thrown');
+	assert.ok(llm.calls[1].maxTokens > llm.calls[0].maxTokens, 'the retry spends a larger budget');
+});
+
+await test('an auth error finish is not retried', async () => {
+	// Only a budget-shaped failure earns another request; a credential fault would
+	// fail again and only delay the report.
+	const llm = fakeLlm({
+		finish: { kind: 'error', failure: { code: 'AUTH', message: 'invalid key' } },
+		defaultMaxTokens: 8192,
+	});
+	const { ctx, routes } = makeCtx({ llm });
+	plugin.apply(ctx, { maxOutputTokens: 2000 });
+	const result = await callRoute(enhanceRoute(routes), { sessionId: 's1', draft: '做个图' });
+	assert.equal(result.json.ok, false);
+	assert.equal(result.json.code, 'AUTH');
+	assert.equal(llm.calls.length, 1, 'no pointless retry');
+});
+
 await test('a genuinely empty reply keeps the original empty-result wording', async () => {
 	const llm = fakeLlm({ textParts: [] });
 	const { ctx, routes } = makeCtx({ llm });
@@ -1693,7 +1751,14 @@ await test('settings exposes the shipped changelog as Chinese-only published ver
 	// exactly the manifest version; on a dev build the newest entry stays at the last
 	// published release, so compare it numerically and never let it exceed the manifest.
 	const isDevBuild = shipped.version.includes('-');
-	assert.equal(body.changelog[0].version, isDevBuild ? '1.9.0' : shipped.version, 'the newest entry is the newest published release');
+	// A dev build must not surface its own version: the newest entry is the last
+	// DATED section of the shipped changelog, whatever number that is. Hardcoding it
+	// here went stale the moment 1.10.0 shipped.
+	const newestPublished = /^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}$/mu.exec(
+		fs.readFileSync(path.join(REPO_ROOT, 'CHANGELOG.md'), 'utf8'),
+	)?.[1];
+	assert.ok(newestPublished, 'the shipped changelog has a dated release section');
+	assert.equal(body.changelog[0].version, isDevBuild ? newestPublished : shipped.version, 'the newest entry is the newest published release');
 	assert.match(body.changelog[0].date, /^\d{4}-\d{2}-\d{2}$/u, 'the release carries the date it shipped with');
 	const listed = body.changelog.map((entry) => entry.version);
 	assert.equal(listed.includes('1.9.0'), true, '1.9.0 is a published version now');

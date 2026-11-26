@@ -431,6 +431,18 @@ function describeFailure(code, fallback) {
 }
 
 /**
+ * True when a provider failure text names an output-length limit rather than a
+ * transport, credential or quota fault.
+ *
+ * Some adapters surface "output limit reached" as a plain error finish instead of
+ * `max-tokens`; only that shape is worth retrying with a larger budget (issue #13).
+ */
+function namesOutputLimit(code, message) {
+	const detail = `${code ?? ''} ${message ?? ''}`;
+	return /max(?:imum)?[\s_-]*(?:output[\s_-]*)?tokens|output[\s_-]*limit|length[\s_-]*limit|too[\s_-]+long/i.test(detail);
+}
+
+/**
  * Strip presentation noise a model sometimes adds around a rewritten prompt.
  * @param raw - concatenated model output.
  * @param maxChars - output cap applied after normalization.
@@ -969,7 +981,12 @@ async function resolveContextWindow(scope, route, signal, cache) {
 		// The declared output capacity rides along in the same entry: it comes from the
 		// same metadata call, and querying the adapter twice per request would defeat
 		// the point of this cache (each call is an adapter round trip).
-		const declaredOutput = info?.limits?.maxOutputTokens ?? info?.maxOutputTokens ?? info?.context?.maxOutputTokens;
+		const declaredOutput = info?.limits?.maxOutputTokens ?? info?.maxOutputTokens
+			// The host's own per-model default is what it actually spends when the request
+			// omits maxTokens; ignoring it started every ladder at the configured budget
+			// (issue #13).
+			?? info?.defaultMaxTokens
+			?? info?.context?.maxOutputTokens;
 		const outputCap = Number.isInteger(declaredOutput) && declaredOutput > 0 ? declaredOutput : undefined;
 		// Cache both a real window and a definitive "no window" so a provider that
 		// omits the field is not re-queried on every request.
@@ -1228,6 +1245,19 @@ async function generate(scope, config, route, draft, history, images, signal, wi
 		if (finish !== undefined && (finish.kind === 'error' || finish.kind === 'aborted')) {
 			const failure = finish.failure;
 			const code = typeof failure?.code === 'string' ? failure.code : 'UNKNOWN';
+			// Some adapters report a spent output budget as a plain error instead of
+			// `max-tokens`. When nothing usable came back, the budget went to reasoning and
+			// the ladder still has room, a larger retry is exactly the rescue the
+			// empty-output branch below performs — throwing here skipped it (issue #13).
+			const retryable = finish.kind === 'error'
+				&& budget < ceiling
+				&& normalizeOutput(text, config.maxOutputChars).length === 0
+				&& (reasoningChars > 0 || namesOutputLimit(code, failure?.message));
+			if (retryable) {
+				lastTruncation = { reasoningChars };
+				budget = Math.min(budget * 2, ceiling);
+				continue;
+			}
 			throw new EnhanceFailure(code, describeFailure(code, `模型请求失败${failure?.message === undefined ? '' : `：${failure.message}`}`));
 		}
 

@@ -433,7 +433,7 @@ function makeHelpers({ draft = '做个图', draftRev = 3, phase = 'plain', attac
 	};
 }
 
-function installPlugin() {
+function installPlugin({ root, rootThrows = false } = {}) {
 	const registrations = [];
 	// A fresh plugin instance installs its own window listener; clearing keeps the
 	// "last installed" lookup pointing at this instance.
@@ -522,6 +522,19 @@ function installPlugin() {
 			},
 		},
 	};
+	// cordis 4.2 answers `ctx.root` on a scoped context with a thrown
+	// `cannot get property "root" without inject`; hosts before it expose a plain
+	// property. Model both shapes so the issue #15 regression stays covered.
+	if (rootThrows) {
+		Object.defineProperty(ctx, 'root', {
+			configurable: true,
+			get() {
+				throw new Error('cannot get property "root" without inject');
+			},
+		});
+	} else if (root !== undefined) {
+		Object.defineProperty(ctx, 'root', { configurable: true, value: root });
+	}
 	const listenersBefore = (globalThis.__peKeyListeners ?? []).length;
 	// Cordis activates a plugin only when EVERY injected service exists. Modelling
 	// that here is what makes the "shortcuts service is absent" case meaningful:
@@ -1815,6 +1828,56 @@ await test('an image is read when the conversation service mounts after activati
 	assert.equal(body.images.length, 1, 'the late-mounted service must still be used');
 	assert.equal(body.images[0].data, 'Bwg=', 'base64 of [7,8]');
 	conversationServiceStub = undefined;
+});
+
+await test('a host that refuses ctx.root still enhances a draft with an image (issue #15)', async () => {
+	// cordis 4.2 throws `cannot get property "root" without inject` for a scoped
+	// context. The old candidate list built `[ctx, ctx?.root]` eagerly, so every
+	// enhance that carried an attachment died before the lookup even ran.
+	requests.length = 0;
+	nextResponse = { body: { ok: true, text: '增强结果', mode: 'plain' } };
+	conversationServiceStub = {
+		resolveDraftAttachments: (ids) => ids.map((id) => ({
+			kind: 'image',
+			id,
+			file: { name: 'shot.png', type: 'image/png', arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer },
+		})),
+	};
+	const registrations = installPlugin({ rootThrows: true });
+	const helper = makeHelpers({ draft: '看这张图', draftRev: 5, attachmentIds: ['att-1'] });
+	const mounted = mountComponent(composerRegistration(registrations).component, helper.props);
+	await sleep(0);
+	findButton(mounted.rerender().tree).props.onClick();
+	await sleep(0);
+	const calls = enhanceCalls();
+	assert.equal(calls.length, 1, 'the run must not die on the ctx.root accessor');
+	assert.equal(calls[0].body.images.length, 1, 'the image is still resolved through ctx.get');
+	assert.equal(calls[0].body.images[0].data, 'AQID', 'the File bytes travel as canonical base64');
+	conversationServiceStub = undefined;
+});
+
+await test('the root fallback still finds the conversation service', async () => {
+	// Hosts before cordis 4.2 expose `ctx.root`; when the scoped lookup misses, that
+	// root context is the only place the conversation service can come from.
+	requests.length = 0;
+	nextResponse = { body: { ok: true, text: '增强结果', mode: 'plain' } };
+	conversationServiceStub = undefined;
+	const rootService = {
+		resolveDraftAttachments: (ids) => ids.map((id) => ({
+			kind: 'image',
+			id,
+			file: { name: 'root.png', type: 'image/png', arrayBuffer: async () => new Uint8Array([4, 5]).buffer },
+		})),
+	};
+	const registrations = installPlugin({ root: { get: (name) => (name === 'conversation' ? rootService : undefined) } });
+	const helper = makeHelpers({ draft: '看图', draftRev: 5, attachmentIds: ['att-1'] });
+	const mounted = mountComponent(composerRegistration(registrations).component, helper.props);
+	await sleep(0);
+	findButton(mounted.rerender().tree).props.onClick();
+	await sleep(0);
+	const body = enhanceCalls()[0].body;
+	assert.equal(body.images.length, 1, 'ctx.root is still consulted when ctx.get misses');
+	assert.equal(body.images[0].data, 'BAU=', 'base64 of [4,5]');
 });
 
 await test('the whale tail is painted brand blue, not inherited', async () => {

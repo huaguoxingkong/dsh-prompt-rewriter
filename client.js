@@ -765,8 +765,24 @@ window.__ModuleLoader__.load({
 		 * @returns the service, or undefined while it is still absent.
 		 */
 		function resolveConversation(ctx) {
-			for (const source of [ctx, ctx?.root]) {
-				if (source === undefined || typeof source.get !== 'function') continue;
+			// cordis 4.2 refuses `ctx.root` on a scoped context with `cannot get property
+			// "root" without inject`, and that throw happened while BUILDING the candidate
+			// list — so every enhance with an attachment died before the lookup ran
+			// (issue #15). Probe each hop inside its own try, and keep the legacy
+			// `ctx.root` path for hosts that still expose it.
+			const sources = [];
+			const consider = (candidate) => {
+				if (candidate === undefined || typeof candidate.get !== 'function') return;
+				if (!sources.includes(candidate)) sources.push(candidate);
+			};
+			for (const probe of [() => ctx, () => ctx?.root, () => ctx?.reflect?.ctx, () => ctx?.reflect?.ctx?.root]) {
+				try {
+					consider(probe());
+				} catch {
+					// This host refuses that accessor; try the next way to reach the root.
+				}
+			}
+			for (const source of sources) {
 				try {
 					const found = source.get('conversation');
 					if (found !== undefined) return found;
