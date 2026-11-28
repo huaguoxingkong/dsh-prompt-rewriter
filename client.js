@@ -107,6 +107,13 @@ window.__ModuleLoader__.load({
 			'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);',
 			'font:inherit;font-size:9px;line-height:11px;cursor:pointer;',
 			'transition:background-color 150ms ease,border-color 150ms ease,color 150ms ease}',
+			// Size is a hard invariant, not a theme token: the chip may never grow a
+			// hit box over the enhance button (#16). !important is deliberate — a
+			// host/theme baseline can arrive at any specificity, before or after this
+			// sheet, and must not be able to stretch the chip.
+			'.dsh-pe_root .dsh-pe_badge{position:absolute!important;right:-5px!important;top:-5px!important;z-index:3!important;',
+			'box-sizing:border-box!important;margin:0!important;min-width:13px!important;min-height:13px!important;width:max-content!important;height:13px!important;',
+			'padding:0 2px!important;border-width:1px!important;font-size:9px!important;line-height:11px!important}',
 			'.dsh-pe_badge:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,.08));',
 			'color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-selected,currentColor)}',
 			'.dsh-pe_badge:focus-visible{outline:2px solid var(--dsw-alias-brand-primary-new-colorprimary-new-color,#4176e6);outline-offset:2px}',
