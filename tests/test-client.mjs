@@ -2289,6 +2289,22 @@ await test('composer seat stays decoupled from host geometry', () => {
 	assert.equal(/standardControls|InputBar_module/u.test(cssRules), false, 'no host-internal selectors in CSS rules');
 });
 
+await test('the rule badge keeps a chip-sized hit box instead of the host button minimum (issue #16)', () => {
+	// A host baseline button rule (one class, loaded after this sheet) stretched the
+	// chip to the host's 28x32 minimum; the invisible box covered the 22px enhance
+	// button, so every click opened the rule menu. Two classes outrank that baseline,
+	// and min-height must be reset explicitly because height alone cannot undo it.
+	const src = fs.readFileSync(path.join(here, '..', 'client.js'), 'utf8');
+	const cssText = /const CSS = \[([\s\S]*?)\]\n\t\t\t\.join/u.exec(src)?.[1] ?? '';
+	const joined = cssText.split('\n').filter((l) => l.trim().startsWith("'")).map((l) => l.trim().replace(/^'|',?$/gu, '')).join('');
+	const rule = /\.dsh-pe_root \.dsh-pe_badge\{([^}]*)\}/u.exec(joined)?.[1] ?? '';
+	assert.ok(rule !== '', 'the badge rule must use the two-class selector');
+	assert.ok(/min-width:13px/u.test(rule), 'the chip must not inherit a wider minimum');
+	assert.ok(/min-height:13px/u.test(rule), 'the host minimum height is what stretched the hit box');
+	assert.ok(/width:max-content/u.test(rule), 'the chip must not inherit a full-width host button');
+	assert.ok(/height:13px/u.test(rule), 'the chip keeps its designed height');
+});
+
 await test('the badge shows a per-rule mark, not a generic 自', async () => {
 	// The real-machine report: every custom rule showed 自, so the badge said nothing
 	// about which set was active. CJK names take one character, Latin/digit names two.

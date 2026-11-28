@@ -99,7 +99,10 @@ window.__ModuleLoader__.load({
 			// The current rule set, on the seat's corner. Absolutely positioned inside the
 			// seat (already position:relative), so it can never move the row: issue #9
 			// pinned this row's spacing and the measured gap must stay exactly as it was.
-			'.dsh-pe_badge{position:absolute;right:-5px;top:-5px;z-index:3;min-width:13px;height:13px;',
+			// Two classes on purpose: a host button baseline that lands after this sheet
+			// and matches with one class used to stretch the chip to the host minimum,
+			// covering the whole 22px enhance button with its invisible hit box (#16).
+			'.dsh-pe_root .dsh-pe_badge{position:absolute;right:-5px;top:-5px;z-index:3;min-width:13px;min-height:13px;width:max-content;height:13px;',
 			'padding:0 3px;border-radius:7px;border:1px solid var(--dsw-alias-border-l1);',
 			'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);',
 			'font:inherit;font-size:9px;line-height:11px;cursor:pointer;',

@@ -5,6 +5,20 @@
 格式遵循 [Keep a Changelog 1.1.0](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/)。
 开发期改动写在 `[Unreleased]` 段，发布时改名为 `## [X.Y.Z] - YYYY-MM-DD`；设置页的更新日志只列已发布的正式版本。
 
+## [Unreleased]
+
+**中文**
+
+### 修复
+
+- 规则集徽标不再挡住润色按钮的点击：徽标的命中区域回到自身大小，鼠标点按钮正常改写草稿，点徽标仍打开规则菜单；缩放或字体不同时也不会再盖住整颗按钮。
+
+**English**
+
+### Fixed
+
+- The rule-set badge no longer swallows clicks meant for the enhance button: its hit area is back to the chip's own size, so clicking the button rewrites the draft again and clicking the badge still opens the rule menu at any zoom or font size.
+
 ## [1.10.1] - 2026-11-26
 
 **中文**
